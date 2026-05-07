@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Yoink</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Mona+Sans:wght@400;500;600;700;800;900&family=Roboto:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="grain"></div>
+
+  <main class="console">
+    <header class="masthead">
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 84 60" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="cap-r" x1="0" y1="0" x2="0" y2="60" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#FF2A2F"/>
+              <stop offset="0.55" stop-color="#E60008"/>
+              <stop offset="1" stop-color="#B40000"/>
+            </linearGradient>
+            <linearGradient id="cap-shine" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="rgba(255,255,255,0.22)"/>
+              <stop offset="1" stop-color="rgba(255,255,255,0)"/>
+            </linearGradient>
+          </defs>
+          <rect width="84" height="60" rx="14" fill="url(#cap-r)"/>
+          <rect x="3" y="3" width="78" height="14" rx="11" fill="url(#cap-shine)"/>
+          <path d="M30 17 L54 17 L42 44 Z" fill="#FFFFFF"/>
+        </svg>
+        <h1 class="brand-title">Yoink</h1>
+      </div>
+      <div class="masthead-right">
+        <button id="history-btn" class="icon-btn" title="Download history" aria-label="Open download history">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v9"/><path d="m7 10 5 5 5-5"/><path d="M5 19h14"/></svg>
+        </button>
+        <button id="help-btn" class="icon-btn" title="Help" aria-label="Open help">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+        </button>
+        <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Open settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button id="tray-btn" class="icon-btn" title="Hide to system tray (downloads continue)" aria-label="Hide to tray">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="field-head">
+        <span class="field-label">Source</span>
+        <span class="field-rule"></span>
+      </div>
+      <div class="row">
+        <input id="url" class="control-input" type="url" placeholder="Paste a video link from YouTube, Instagram, Facebook, or X" autofocus autocomplete="off" spellcheck="false">
+        <button id="fetch" class="btn">
+          <span>Scan</span>
+          <span class="arrow">↗</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="row two-col">
+        <div class="control">
+          <div class="field-head"><span class="field-label">Format</span></div>
+          <div class="seg" data-name="format">
+            <button class="seg-btn active" data-value="mp4">MP4</button>
+            <button class="seg-btn" data-value="mp3">MP3</button>
+          </div>
+        </div>
+        <div class="control">
+          <div class="field-head"><span class="field-label">Quality</span></div>
+          <div class="seg" data-name="resolution" id="seg-resolution">
+            <button class="seg-btn" data-value="720">720p</button>
+            <button class="seg-btn active" data-value="1080">1080p</button>
+            <button class="seg-btn" data-value="4k">4K</button>
+            <button class="seg-btn" data-value="best">Max</button>
+          </div>
+          <div class="seg" data-name="bitrate" id="seg-bitrate" hidden>
+            <button class="seg-btn" data-value="128">128 kbps</button>
+            <button class="seg-btn active" data-value="192">192 kbps</button>
+            <button class="seg-btn" data-value="320">320 kbps</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-head">
+        <span class="field-label">Destination</span>
+        <span class="field-rule"></span>
+      </div>
+      <div class="row">
+        <input id="dest" class="control-input" type="text" spellcheck="false" autocomplete="off">
+        <button id="browse-btn" class="btn ghost"><span>Browse</span></button>
+        <button id="open-folder-btn" class="btn ghost"><span>Open</span></button>
+      </div>
+
+      <div class="field-head">
+        <span class="field-label">Clip range</span>
+        <span class="field-rule"></span>
+      </div>
+      <div class="row clip-row">
+        <div class="time-input" id="clip-start">
+          <input type="text" maxlength="2" data-part="h" value="00" inputmode="numeric" autocomplete="off">
+          <span class="time-sep">:</span>
+          <input type="text" maxlength="2" data-part="m" value="00" inputmode="numeric" autocomplete="off">
+          <span class="time-sep">:</span>
+          <input type="text" maxlength="2" data-part="s" value="00" inputmode="numeric" autocomplete="off">
+        </div>
+        <span class="clip-arrow" aria-hidden="true">→</span>
+        <div class="time-input" id="clip-end">
+          <input type="text" maxlength="2" data-part="h" value="00" inputmode="numeric" autocomplete="off">
+          <span class="time-sep">:</span>
+          <input type="text" maxlength="2" data-part="m" value="00" inputmode="numeric" autocomplete="off">
+          <span class="time-sep">:</span>
+          <input type="text" maxlength="2" data-part="s" value="00" inputmode="numeric" autocomplete="off">
+        </div>
+        <button id="clip-clear" class="btn ghost" type="button"><span>Reset</span></button>
+      </div>
+    </section>
+
+    <section id="status" class="status hidden"></section>
+
+    <section id="grid" class="grid"></section>
+  </main>
+
+  <footer id="footer" class="transport hidden">
+    <div class="transport-inner">
+      <div class="select-actions">
+        <button id="select-all" class="pill-btn">Select all</button>
+        <button id="select-none" class="pill-btn">Deselect</button>
+        <button id="clear-queue" class="pill-btn" title="Remove every video from the queue">Clear queue</button>
+        <span class="sel-count" id="sel-count">0 of 0 selected</span>
+      </div>
+      <button id="download" class="rec-btn" disabled>
+        <span class="rec-dot"></span>
+        <span class="rec-label">Download</span>
+        <span class="rec-count"></span>
+      </button>
+    </div>
+  </footer>
+
+  <!-- Settings modal -->
+  <div id="settings-backdrop" class="settings-backdrop"></div>
+  <div id="settings-modal" class="settings-modal" aria-hidden="true">
+    <div class="settings-frame">
+      <header class="settings-frame-head">
+        <h2>Settings</h2>
+        <button id="settings-close" class="icon-btn" aria-label="Close settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <div class="settings-frame-body">
+
+        <nav class="settings-nav">
+          <button class="nav-item active" data-tab="organization">Organization</button>
+          <button class="nav-item" data-tab="format">Format</button>
+          <button class="nav-item" data-tab="subtitles">Subtitles</button>
+          <button class="nav-item" data-tab="sponsorblock">SponsorBlock</button>
+          <button class="nav-item" data-tab="downloads">Downloads</button>
+          <button class="nav-item" data-tab="auth">Authentication</button>
+          <button class="nav-item" data-tab="history">History</button>
+          <button class="nav-item" data-tab="updates">Updates</button>
+          <div class="nav-divider" aria-hidden="true"></div>
+          <button class="nav-item" data-tab="help">Help</button>
+          <button class="nav-item nav-item-small" data-tab="about">About</button>
+        </nav>
+
+        <div class="settings-pages">
+
+          <section class="settings-page" data-page="help">
+            <h3>How Yoink works</h3>
+            <p class="page-help">A short guide to every feature in plain language.</p>
+
+            <div class="help-content">
+              <h4>The basics</h4>
+              <ol>
+                <li>Paste a video link into the Source field at the top. Yoink supports YouTube, Instagram, Facebook, and X (Twitter), plus most other sites yt-dlp can extract. You can also drop a link onto the window from your browser.</li>
+                <li>Click Scan, or press <code>Ctrl+Enter</code>. Thumbnails appear below, each with a small badge in the corner showing where it came from.</li>
+                <li>Paste another link to add more videos to the queue. Existing ones stay. Use Clear queue at the bottom to start over.</li>
+                <li>Click any thumbnail to toggle it. The red border means selected.</li>
+                <li>Choose MP4 or MP3, pick a quality, and confirm the destination folder.</li>
+                <li>Click Download or press <code>Ctrl+D</code>. Each card shows its own progress.</li>
+              </ol>
+
+              <h4>Download history</h4>
+              <p>Click the down-arrow icon at the top right (or open Settings, History) to see every video Yoink has finished. The Skip already-downloaded toggle in Settings, Downloads uses this list to prevent re-downloading the same video. You can clear the visible list, or clear the list plus the archive (which forgets what was downloaded).</p>
+
+              <h4>Supported sites</h4>
+              <ul>
+                <li><strong>YouTube</strong>: single videos, playlists, channels. Public videos work without any setup.</li>
+                <li><strong>Instagram</strong>: reels and public posts work directly. Stories and private accounts require cookies (see Cookies from browser below).</li>
+                <li><strong>Facebook</strong>: public videos work. Group or friends-only videos require cookies.</li>
+                <li><strong>X (Twitter)</strong>: most embedded videos work. Some posts require cookies.</li>
+                <li><strong>Other sites</strong>: yt-dlp supports about a thousand sites. Most of them just work if you paste the link.</li>
+              </ul>
+
+              <h4>Format and quality</h4>
+              <p>Use the Format toggle to switch between MP4 (video file) and MP3 (audio only).</p>
+              <p>When MP4 is on, the Quality control shows resolutions: 720p, 1080p, 4K, or Max. Max picks the highest available.</p>
+              <p>When MP3 is on, the Quality control swaps to bitrates: 128, 192, or 320 kbps. Higher numbers mean better audio at the cost of file size.</p>
+              <p>Defaults live in Settings on the Format tab. What you pick on the homepage is a one-time override that resets next launch.</p>
+
+              <h4>Destination</h4>
+              <ul>
+                <li>Type or paste a folder path.</li>
+                <li>Click Browse to pick a folder using a native dialog.</li>
+                <li>Click Open to open the current folder in File Explorer.</li>
+              </ul>
+
+              <h4>Clip range</h4>
+              <p>To download only part of a video, set a start and end time. Each field has three cells for hours, minutes, and seconds.</p>
+              <p>Click any cell, type two digits, and focus jumps to the next cell automatically. Typing a colon also jumps. Leave everything at 00:00:00 to download the full video.</p>
+              <p>If you paste a YouTube URL that contains a timestamp like <code>?t=163</code>, the start time fills in for you.</p>
+
+              <h4>Filename template</h4>
+              <p>Settings, Organization tab. The template controls how files get named. Click any tag chip to insert it at your cursor. Use a slash (<code>/</code>) to create subfolders.</p>
+              <ul>
+                <li><code>{title}</code>: video title</li>
+                <li><code>{channel}</code>: channel name</li>
+                <li><code>{n}</code>: playlist position number (01, 02, and so on). Empty for single videos.</li>
+                <li><code>{playlist}</code>: playlist name. Empty for single videos.</li>
+                <li><code>{quality}</code>: the quality you picked, like 1080p or 192kbps</li>
+                <li><code>{upload_date}</code>: when the video was uploaded</li>
+                <li><code>{download_date}</code>: today</li>
+                <li><code>{id}</code>: YouTube video id</li>
+                <li><code>{ext}</code>: file extension (auto-added if you do not include it)</li>
+              </ul>
+              <p>Try <code>{n} - {title}</code> for "01 - Title.mp4", or <code>{channel}/{title}</code> for one folder per channel.</p>
+
+              <h4>Hide to tray</h4>
+              <p>Click the Background button at the top right to send the window to your system tray. Downloads keep running. Click the tray icon to bring the window back. Closing the window with the X stops everything.</p>
+
+              <h4>SponsorBlock</h4>
+              <p>Settings, SponsorBlock tab. SponsorBlock is a community database of sponsor segments inside YouTube videos.</p>
+              <p>After scanning, Yoink fetches segment info automatically. Coloured bars show where each segment sits on the thumbnail, and chips below the title summarise them by category.</p>
+              <p>Three modes:</p>
+              <ul>
+                <li><strong>Off</strong>: segments still get previewed on cards, but nothing is changed in the file.</li>
+                <li><strong>Mark</strong>: segments become chapters in the file. The video plays normally, you can skip them in chapter-aware players.</li>
+                <li><strong>Remove</strong>: segments get cut out of the file entirely.</li>
+              </ul>
+              <p>Use the checkboxes to pick which categories count. Each category has its own colour, matching the bars on the thumbnail.</p>
+
+              <h4>Subtitles</h4>
+              <p>Settings, Subtitles tab. Toggle on to download subtitles and embed them into the video file. Use the Languages field to list which languages to fetch, separated by commas (like <code>en, nl, es</code>). Yoink falls back to auto-generated subtitles when official ones are not available.</p>
+
+              <h4>Cookies from browser</h4>
+              <p>Settings, Authentication tab. For age-gated, members-only, or private videos, Yoink can read your browser cookies so it acts as your logged-in account. Pick which browser to use. You do not need to watch the video first, just be logged in.</p>
+
+              <h4>Concurrent downloads</h4>
+              <p>Settings, Downloads tab. By default Yoink downloads one video at a time. You can switch to 2 or 3 in parallel. Higher numbers can be faster on a fast connection, but YouTube sometimes throttles parallel requests so the gain depends on your network.</p>
+
+              <h4>Open destination when done</h4>
+              <p>Settings, Downloads tab. When all downloads finish, the destination folder pops open in File Explorer.</p>
+
+              <h4>Updates</h4>
+              <p>Settings, Updates tab. Yoink uses yt-dlp to fetch videos. YouTube changes break it from time to time, and yt-dlp updates fix that. Click Check for updates to pull the latest version. After an update, restart the app to pick it up.</p>
+            </div>
+          </section>
+
+          <section class="settings-page active" data-page="organization">
+            <h3>Organization</h3>
+            <p class="page-help">Build a filename pattern using tags. Use <code>/</code> to create subfolders. Click any chip below to insert it at your cursor.</p>
+
+            <div class="setting-row stacked">
+              <label class="setting-label" for="filename-template">Filename template</label>
+              <input type="text" data-opt="filenameTemplate" id="filename-template" class="template-input" placeholder="{n}{title}" spellcheck="false" autocomplete="off">
+            </div>
+
+            <div class="tag-chips" id="tag-chips">
+              <button class="tag-chip" data-tag="{title}" type="button">{title}</button>
+              <button class="tag-chip" data-tag="{channel}" type="button">{channel}</button>
+              <button class="tag-chip" data-tag="{n}" type="button">{n}</button>
+              <button class="tag-chip" data-tag="{playlist}" type="button">{playlist}</button>
+              <button class="tag-chip" data-tag="{quality}" type="button">{quality}</button>
+              <button class="tag-chip" data-tag="{upload_date}" type="button">{upload_date}</button>
+              <button class="tag-chip" data-tag="{download_date}" type="button">{download_date}</button>
+              <button class="tag-chip" data-tag="{id}" type="button">{id}</button>
+              <button class="tag-chip" data-tag="{ext}" type="button">{ext}</button>
+              <button class="tag-chip" data-tag="/" type="button" title="Create a subfolder">/</button>
+            </div>
+
+            <div class="template-preview">
+              <span class="preview-label">Preview</span>
+              <code class="preview-text" id="template-preview">…</code>
+            </div>
+
+            <div class="template-help">
+              <p><strong>{n}</strong> — playlist position (<code>01</code>, <code>02</code>, …); empty for single videos. Add your own separator: <code>{n} - {title}</code></p>
+              <p><strong>{playlist}</strong> — source playlist name; empty for single videos. Combine with <code>/</code> for a subfolder per playlist.</p>
+              <p>Leading separators after empty tags get trimmed automatically — so <code>{n} - {title}</code> still works for single videos.</p>
+              <p>Examples: <code>{n} - {title}</code> · <code>{channel}/{title}</code> · <code>{playlist}/{n} - {title}</code></p>
+            </div>
+          </section>
+
+          <section class="settings-page" data-page="format">
+            <h3>Format</h3>
+            <p class="page-help">Defaults applied when the app starts. The homepage Quality control overrides these for a single download — it'll reset to the defaults next time you launch.</p>
+            <div class="setting-row">
+              <span class="setting-label">Default video quality</span>
+              <select data-opt="defaultVideoQuality">
+                <option value="720">720p</option>
+                <option value="1080" selected>1080p</option>
+                <option value="4k">4K</option>
+                <option value="best">Max available</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Default MP3 bitrate</span>
+              <select data-opt="defaultMp3Bitrate">
+                <option value="128">128 kbps</option>
+                <option value="192" selected>192 kbps</option>
+                <option value="320">320 kbps</option>
+              </select>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" data-opt="embedMetadata" checked>
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-text">
+                <span class="t-title">Embed thumbnail and metadata</span>
+                <span class="t-help">Shows YouTube thumbnails in Explorer; tags audio with title and uploader</span>
+              </span>
+            </label>
+          </section>
+
+          <section class="settings-page" data-page="subtitles">
+            <h3>Subtitles</h3>
+            <p class="page-help">Download subtitles alongside the video and embed them into the file.</p>
+            <label class="toggle">
+              <input type="checkbox" data-opt="subtitles">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-text">
+                <span class="t-title">Download and embed subtitles</span>
+                <span class="t-help">Falls back to auto-generated when official aren't available</span>
+              </span>
+            </label>
+            <div class="setting-row">
+              <span class="setting-label">Languages</span>
+              <input type="text" data-opt="subtitleLangs" value="en" placeholder="en, nl, es">
+            </div>
+          </section>
+
+          <section class="settings-page" data-page="sponsorblock">
+            <h3>SponsorBlock</h3>
+            <p class="page-help">Crowd-sourced timestamps of sponsor segments. After scanning a URL, segments appear color-coded on each thumbnail and as chips below the title — so you can preview them before deciding to remove.</p>
+            <div class="setting-row">
+              <span class="setting-label">Mode</span>
+              <select data-opt="sbMode">
+                <option value="off" selected>Off</option>
+                <option value="mark">Mark only (chapters)</option>
+                <option value="remove">Remove from file</option>
+              </select>
+            </div>
+            <div class="page-subhead">Categories</div>
+            <div class="checkbox-grid" data-opt-group="sbCategories">
+              <label class="check"><input type="checkbox" data-cat="sponsor" checked> <span class="dot dot-sponsor"></span> Sponsor</label>
+              <label class="check"><input type="checkbox" data-cat="selfpromo" checked> <span class="dot dot-selfpromo"></span> Self-promo</label>
+              <label class="check"><input type="checkbox" data-cat="interaction"> <span class="dot dot-interaction"></span> Interaction</label>
+              <label class="check"><input type="checkbox" data-cat="intro"> <span class="dot dot-intro"></span> Intro</label>
+              <label class="check"><input type="checkbox" data-cat="outro"> <span class="dot dot-outro"></span> Outro</label>
+              <label class="check"><input type="checkbox" data-cat="preview"> <span class="dot dot-preview"></span> Preview</label>
+              <label class="check"><input type="checkbox" data-cat="music_offtopic"> <span class="dot dot-music"></span> Off-topic music</label>
+              <label class="check"><input type="checkbox" data-cat="filler"> <span class="dot dot-filler"></span> Filler</label>
+            </div>
+          </section>
+
+          <section class="settings-page" data-page="downloads">
+            <h3>Downloads</h3>
+            <p class="page-help">How many videos download at once, what happens when they finish, and how much bandwidth Yoink can use.</p>
+            <div class="setting-row">
+              <span class="setting-label">Concurrent videos</span>
+              <select data-opt="concurrent">
+                <option value="1" selected>1 (sequential)</option>
+                <option value="2">2 parallel</option>
+                <option value="3">3 parallel</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Bandwidth limit</span>
+              <select data-opt="rateLimit">
+                <option value="off" selected>Unlimited</option>
+                <option value="500K">500 KB/s</option>
+                <option value="1M">1 MB/s</option>
+                <option value="2M">2 MB/s</option>
+                <option value="5M">5 MB/s</option>
+                <option value="10M">10 MB/s</option>
+              </select>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" data-opt="openWhenDone">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-text">
+                <span class="t-title">Open destination when done</span>
+                <span class="t-help">Opens the folder in File Explorer after the last file</span>
+              </span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" data-opt="skipDownloaded" checked>
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-text">
+                <span class="t-title">Skip already-downloaded videos</span>
+                <span class="t-help">Yoink keeps track of every video it finishes and skips them next time</span>
+              </span>
+            </label>
+          </section>
+
+          <section class="settings-page" data-page="auth">
+            <h3>Authentication</h3>
+            <p class="page-help">For age-gated, members-only, or private videos. Two ways: use the cookies from a browser you are logged in to, or supply a cookies.txt file directly. The file overrides the browser if both are set.</p>
+            <div class="setting-row">
+              <span class="setting-label">Cookies from browser</span>
+              <select data-opt="cookies">
+                <option value="off" selected>Off</option>
+                <option value="chrome">Chrome</option>
+                <option value="firefox">Firefox</option>
+                <option value="edge">Edge</option>
+                <option value="brave">Brave</option>
+              </select>
+            </div>
+            <div class="setting-row stacked">
+              <span class="setting-label">Custom cookies file (optional)</span>
+              <div class="row" style="gap:8px">
+                <input type="text" data-opt="cookieFile" id="cookie-file" placeholder="C:\path\to\cookies.txt" spellcheck="false" style="flex:1">
+                <button id="cookie-pick" class="btn ghost" type="button"><span>Browse</span></button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-page" data-page="history">
+            <h3>Download history</h3>
+            <p class="page-help">A record of every video Yoink has finished. Click a row to open the file. The Skip already-downloaded toggle in Downloads uses this list to avoid re-downloading.</p>
+            <div class="row" style="gap:8px;margin:8px 0 16px">
+              <button id="history-refresh" class="btn ghost" type="button"><span>Refresh</span></button>
+              <button id="history-clear" class="btn ghost" type="button"><span>Clear list</span></button>
+              <button id="history-clear-all" class="btn ghost" type="button"><span>Clear list and archive</span></button>
+            </div>
+            <div id="history-list" class="history-list"><p class="history-empty">No downloads yet.</p></div>
+          </section>
+
+          <section class="settings-page" data-page="about">
+            <h3>About</h3>
+            <div class="about-block">
+              <p><strong>Yoink</strong> · version <span id="about-yoink-version">…</span></p>
+              <p>yt-dlp · version <span id="about-ytdlp-version">…</span></p>
+              <p class="page-help">A local desktop app for downloading videos from YouTube, Instagram, Facebook, X, and most other sites yt-dlp supports.</p>
+            </div>
+
+            <div class="page-subhead">App updates</div>
+            <div class="about-actions">
+              <button id="check-yoink-update" class="btn primary-soft" type="button">
+                <span class="update-icon">↻</span>
+                <span>Check for Yoink updates</span>
+              </button>
+            </div>
+            <p class="update-result" id="yoink-update-result"></p>
+
+            <div class="page-subhead" style="margin-top:24px">Diagnostics and reset</div>
+            <div class="about-actions">
+              <button id="open-log" class="btn ghost" type="button"><span>Open log file</span></button>
+              <button id="open-data" class="btn ghost" type="button"><span>Open data folder</span></button>
+              <button id="reset-settings" class="btn" type="button" style="background:var(--rec);color:#fff"><span>Reset all settings</span></button>
+            </div>
+          </section>
+
+          <section class="settings-page" data-page="updates">
+            <h3>Updates</h3>
+            <p class="page-help">Yoink relies on yt-dlp to download videos. YouTube changes break it often, and updates fix them, so keep this current.</p>
+            <div class="setting-row">
+              <span class="setting-label">Installed yt-dlp version</span>
+              <span class="version-display" id="version-num">···</span>
+            </div>
+            <button id="update-btn" class="btn primary-soft">
+              <span class="update-icon">↻</span>
+              <span>Check for updates</span>
+            </button>
+            <p class="update-result" id="update-result"></p>
+          </section>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

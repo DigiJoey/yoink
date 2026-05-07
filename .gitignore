@@ -1,0 +1,32 @@
+# Python virtual environment (recreate via setup.bat)
+.venv/
+venv/
+env/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller build artefacts
+build/
+dist/
+*.spec
+
+# Inno Setup output (the installer is uploaded as a GitHub Release asset, not committed)
+Output/
+
+# Logs and runtime data
+*.log
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS junk
+Thumbs.db
+.DS_Store
+desktop.ini
