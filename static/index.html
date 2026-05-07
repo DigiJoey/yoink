@@ -124,8 +124,20 @@
 
     <section id="status" class="status hidden"></section>
 
+    <div id="grid-toolbar" class="grid-toolbar hidden">
+      <input id="grid-search" type="text" placeholder="Filter the queue by title…" autocomplete="off" spellcheck="false">
+    </div>
+
     <section id="grid" class="grid"></section>
   </main>
+
+  <div id="card-menu" class="card-menu" hidden>
+    <button data-action="copy-url" type="button">Copy URL</button>
+    <button data-action="open-url" type="button">Open in browser</button>
+    <button data-action="open-file" type="button" data-shows-when="done">Open file</button>
+    <button data-action="open-folder" type="button" data-shows-when="done">Open in Explorer</button>
+    <button data-action="remove" type="button" class="danger">Remove from queue</button>
+  </div>
 
   <footer id="footer" class="transport hidden">
     <div class="transport-inner">
@@ -163,7 +175,6 @@
           <button class="nav-item" data-tab="downloads">Downloads</button>
           <button class="nav-item" data-tab="auth">Authentication</button>
           <button class="nav-item" data-tab="history">History</button>
-          <button class="nav-item" data-tab="updates">Updates</button>
           <div class="nav-divider" aria-hidden="true"></div>
           <button class="nav-item" data-tab="help">Help</button>
           <button class="nav-item nav-item-small" data-tab="about">About</button>
@@ -443,41 +454,46 @@
 
           <section class="settings-page" data-page="about">
             <h3>About</h3>
-            <div class="about-block">
-              <p><strong>Yoink</strong> · version <span id="about-yoink-version">…</span></p>
-              <p>yt-dlp · version <span id="about-ytdlp-version">…</span></p>
-              <p class="page-help">A local desktop app for downloading videos from YouTube, Instagram, Facebook, X, and most other sites yt-dlp supports.</p>
-            </div>
+            <p class="page-help">A local desktop app for downloading videos from YouTube, Instagram, Facebook, X, and most other sites yt-dlp supports.</p>
 
-            <div class="page-subhead">App updates</div>
-            <div class="about-actions">
-              <button id="check-yoink-update" class="btn primary-soft" type="button">
-                <span class="update-icon">↻</span>
-                <span>Check for Yoink updates</span>
-              </button>
+            <div class="page-subhead">Versions and updates</div>
+            <div class="setting-row">
+              <span class="setting-label">Yoink</span>
+              <div class="setting-row-end">
+                <span class="version-display" id="about-yoink-version">···</span>
+                <button id="check-yoink-update" class="btn primary-soft" type="button">
+                  <span class="update-icon">↻</span>
+                  <span>Check for updates</span>
+                </button>
+              </div>
             </div>
             <p class="update-result" id="yoink-update-result"></p>
 
-            <div class="page-subhead" style="margin-top:24px">Diagnostics and reset</div>
+            <div class="setting-row">
+              <span class="setting-label">yt-dlp</span>
+              <div class="setting-row-end">
+                <span class="version-display" id="version-num">···</span>
+                <button id="update-btn" class="btn primary-soft" type="button">
+                  <span class="update-icon">↻</span>
+                  <span>Check for updates</span>
+                </button>
+              </div>
+            </div>
+            <p class="update-result" id="update-result"></p>
+
+            <div class="page-subhead" style="margin-top:24px">Settings</div>
+            <div class="about-actions">
+              <button id="export-settings" class="btn ghost" type="button"><span>Export settings</span></button>
+              <button id="import-settings" class="btn ghost" type="button"><span>Import settings</span></button>
+              <button id="reset-settings" class="btn" type="button" style="background:var(--rec);color:#fff"><span>Reset all settings</span></button>
+            </div>
+            <input id="import-file" type="file" accept=".json,application/json" hidden>
+
+            <div class="page-subhead" style="margin-top:24px">Diagnostics</div>
             <div class="about-actions">
               <button id="open-log" class="btn ghost" type="button"><span>Open log file</span></button>
               <button id="open-data" class="btn ghost" type="button"><span>Open data folder</span></button>
-              <button id="reset-settings" class="btn" type="button" style="background:var(--rec);color:#fff"><span>Reset all settings</span></button>
             </div>
-          </section>
-
-          <section class="settings-page" data-page="updates">
-            <h3>Updates</h3>
-            <p class="page-help">Yoink relies on yt-dlp to download videos. YouTube changes break it often, and updates fix them, so keep this current.</p>
-            <div class="setting-row">
-              <span class="setting-label">Installed yt-dlp version</span>
-              <span class="version-display" id="version-num">···</span>
-            </div>
-            <button id="update-btn" class="btn primary-soft">
-              <span class="update-icon">↻</span>
-              <span>Check for updates</span>
-            </button>
-            <p class="update-result" id="update-result"></p>
           </section>
 
         </div>

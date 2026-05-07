@@ -509,8 +509,143 @@ $("#clear-queue")?.addEventListener("click", () => {
   playlistUrl = null;
   $("#grid").innerHTML = "";
   $("#footer").classList.add("hidden");
+  $("#grid-toolbar").classList.add("hidden");
   document.body.classList.remove("has-transport");
   hideStatus();
+});
+
+/* ---- Queue reordering ---- */
+function moveVideo(draggedId, targetId, before) {
+  const dragIdx = videos.findIndex(v => v.id === draggedId);
+  const targetIdx = videos.findIndex(v => v.id === targetId);
+  if (dragIdx < 0 || targetIdx < 0) return;
+  const [moved] = videos.splice(dragIdx, 1);
+  let newIdx = videos.findIndex(v => v.id === targetId);
+  if (!before) newIdx += 1;
+  videos.splice(newIdx, 0, moved);
+  renderGrid();
+  applyFilter();
+}
+
+/* ---- Search/filter ---- */
+function applyFilter() {
+  const q = ($("#grid-search")?.value || "").trim().toLowerCase();
+  $$("#grid .card").forEach(c => {
+    if (!q) { c.style.display = ""; return; }
+    const v = videos.find(x => x.id === c.dataset.id);
+    const hay = ((v?.title || "") + " " + (v?.uploader || "")).toLowerCase();
+    c.style.display = hay.includes(q) ? "" : "none";
+  });
+}
+$("#grid-search")?.addEventListener("input", applyFilter);
+
+function updateGridToolbarVisibility() {
+  // Show search bar once the grid is more than one row of cards
+  $("#grid-toolbar").classList.toggle("hidden", videos.length < 7);
+}
+
+/* ---- Right-click context menu ---- */
+const cardMenu = $("#card-menu");
+let cardMenuVideo = null;
+function showCardMenu(x, y, v) {
+  cardMenuVideo = v;
+  // Toggle "open file/folder" buttons based on whether the card is done
+  const card = document.querySelector(`.card[data-id="${v.id}"]`);
+  const isDone = !!(card && card.classList.contains("done") && v.filepath);
+  cardMenu.querySelectorAll('[data-shows-when="done"]').forEach(b => {
+    b.style.display = isDone ? "" : "none";
+  });
+  cardMenu.hidden = false;
+  // Position, clamping to viewport
+  const w = cardMenu.offsetWidth;
+  const h = cardMenu.offsetHeight;
+  const left = Math.min(x, window.innerWidth - w - 8);
+  const top = Math.min(y, window.innerHeight - h - 8);
+  cardMenu.style.left = left + "px";
+  cardMenu.style.top = top + "px";
+}
+function hideCardMenu() {
+  cardMenu.hidden = true;
+  cardMenuVideo = null;
+}
+cardMenu.querySelectorAll("button").forEach(b => {
+  b.addEventListener("click", () => {
+    const action = b.dataset.action;
+    const v = cardMenuVideo;
+    hideCardMenu();
+    if (!v) return;
+    if (action === "copy-url") {
+      navigator.clipboard.writeText(v.url).catch(() => {});
+    } else if (action === "open-url") {
+      if (native()) native().open_folder(v.url);
+      else window.open(v.url, "_blank");
+    } else if (action === "open-file" && v.filepath && native()) {
+      native().open_folder(v.filepath);
+    } else if (action === "open-folder" && v.filepath && native()) {
+      const folder = v.filepath.replace(/[\\/][^\\/]*$/, "");
+      native().open_folder(folder);
+    } else if (action === "remove") {
+      removeVideo(v.id);
+    }
+  });
+});
+document.addEventListener("click", e => {
+  if (!cardMenu.contains(e.target)) hideCardMenu();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") hideCardMenu();
+});
+
+function removeVideo(vid) {
+  videos = videos.filter(v => v.id !== vid);
+  selected.delete(vid);
+  const card = document.querySelector(`.card[data-id="${vid}"]`);
+  if (card) card.remove();
+  updateDownloadBtn();
+  updateGridToolbarVisibility();
+  if (!videos.length) {
+    $("#footer").classList.add("hidden");
+    document.body.classList.remove("has-transport");
+  }
+}
+
+/* ---- Settings export/import ---- */
+$("#export-settings")?.addEventListener("click", () => {
+  const data = {};
+  Object.keys(localStorage).filter(k => k.startsWith("opt.") || k === "dest").forEach(k => {
+    data[k] = localStorage.getItem(k);
+  });
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "yoink-settings.json";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+$("#import-settings")?.addEventListener("click", () => {
+  $("#import-file").click();
+});
+$("#import-file")?.addEventListener("change", async e => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (typeof data !== "object" || !data) throw new Error("Invalid file");
+    if (!confirm("Replace your current settings with the contents of this file?")) return;
+    Object.keys(localStorage).filter(k => k.startsWith("opt.") || k === "dest").forEach(k => localStorage.removeItem(k));
+    for (const [k, v] of Object.entries(data)) {
+      if (typeof k === "string" && (k.startsWith("opt.") || k === "dest")) {
+        localStorage.setItem(k, String(v));
+      }
+    }
+    location.reload();
+  } catch (err) {
+    setStatus(`Import failed: ${err.message}`, true);
+  } finally {
+    e.target.value = "";
+  }
 });
 
 /* ---- Segmented controls ---- */
@@ -544,11 +679,29 @@ async function fetchInfo() {
   $("#fetch").disabled = true;
   setStatus("Scanning source…");
   setReadout("scanning");
+
+  // Channel detection: ask up front how many to fetch so we do not pull thousands.
+  let limit = null;
+  if (/youtube\.com\/(@|c\/|user\/|channel\/)/i.test(url)) {
+    const ans = prompt(
+      "This looks like a channel. How many of the most recent videos should Yoink fetch?\n\nEnter a number (1 to 500), or leave empty to cancel.",
+      "20"
+    );
+    if (ans == null) {
+      $("#fetch").disabled = false;
+      setReadout("standby");
+      hideStatus();
+      return;
+    }
+    const n = parseInt(ans, 10);
+    if (!isNaN(n) && n > 0) limit = Math.min(500, n);
+  }
+
   try {
     const r = await fetch("/api/info", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, limit }),
     });
     if (!r.ok) throw new Error((await r.json()).detail || "Failed to fetch");
     const data = await r.json();
@@ -557,6 +710,19 @@ async function fetchInfo() {
       setStatus("No videos found at that URL.", true);
       setReadout("error");
       return;
+    }
+    // Warn if any of the fetched entries is a live broadcast
+    const liveCount = fetched.filter(v => v.is_live).length;
+    if (liveCount > 0) {
+      const ok = confirm(
+        `${liveCount} of these ${liveCount === 1 ? "is a live stream" : "are live streams"}.\n\nLive streams download in real time and may never finish until the stream ends. Continue anyway?`
+      );
+      if (!ok) {
+        $("#fetch").disabled = false;
+        setReadout("standby");
+        hideStatus();
+        return;
+      }
     }
 
     // Queue behaviour: append new videos, dedupe by id, keep existing ones.
@@ -570,6 +736,7 @@ async function fetchInfo() {
 
     appendCards(newOnes, existing.size);
     fetchSponsorBlock(newOnes.map(v => v.id));
+    updateGridToolbarVisibility();
 
     if (newOnes.length === 0) {
       setStatus(`Already in the queue: ${fetched.length} video${fetched.length === 1 ? "" : "s"} from that link.`);
@@ -694,22 +861,48 @@ function platformBadge(platform) {
 const SEG_COUNT = 16;
 const vuSegments = () => Array.from({ length: SEG_COUNT }, () => "<span></span>").join("");
 
+function estimateSize(v) {
+  // Fall back to a heuristic when yt-dlp did not return filesize_approx.
+  if (v.filesize_approx) return v.filesize_approx;
+  if (!v.duration) return null;
+  const fmt = segValue("format");
+  if (fmt === "mp3") {
+    const kbps = parseInt(segValue("bitrate"), 10) || 192;
+    return v.duration * kbps * 125; // bytes
+  }
+  // MB per minute for various MP4 qualities, rough averages
+  const mbPerMin = { "720": 2.5, "1080": 4.5, "4k": 18, "best": 6 }[segValue("resolution")] || 4.5;
+  return (v.duration / 60) * mbPerMin * 1024 * 1024;
+}
+
+function formatBytes(b) {
+  if (b == null) return "";
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
+  if (b < 1024 * 1024 * 1024) return `${(b / 1024 / 1024).toFixed(0)} MB`;
+  return `${(b / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
 function buildCardElement(v, i) {
   const card = document.createElement("article");
   card.className = "card" + (selected.has(v.id) ? " selected" : "");
   card.dataset.id = v.id;
   card.style.setProperty("--i", i);
+  card.draggable = true;
   const thumbSrc = v.thumbnail || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'><rect width='16' height='9' fill='%23272727'/></svg>";
+  const size = estimateSize(v);
   card.innerHTML = `
     <div class="card-thumb">
       <img src="${thumbSrc}" loading="lazy" alt="">
       <div class="card-check"></div>
       ${platformBadge(v.platform)}
+      ${v.is_live ? `<div class="card-live">Live</div>` : ""}
       ${v.duration ? `<div class="card-duration">${formatDuration(v.duration)}</div>` : ""}
     </div>
     <div class="card-meta">
       <h3 class="card-title">${escapeHtml(v.title)}</h3>
       ${v.uploader ? `<p class="card-channel">${escapeHtml(v.uploader)}</p>` : ""}
+      ${size ? `<div class="card-info"><span class="card-size">~${formatBytes(size)}</span></div>` : ""}
       <div class="card-progress hidden">
         <div class="vu">${vuSegments()}</div>
         <div class="card-stats">
@@ -719,13 +912,13 @@ function buildCardElement(v, i) {
         <div class="card-actions">
           <button class="card-cancel" type="button">Cancel</button>
           <button class="card-retry" type="button">Retry</button>
+          <button class="card-open" type="button">Open</button>
         </div>
       </div>
     </div>
   `;
   card.addEventListener("click", e => {
-    // Don't toggle selection when clicking cancel or retry
-    if (e.target.closest(".card-cancel, .card-retry")) return;
+    if (e.target.closest(".card-cancel, .card-retry, .card-open")) return;
     toggleSelect(v.id);
   });
   card.querySelector(".card-cancel").addEventListener("click", e => {
@@ -735,6 +928,46 @@ function buildCardElement(v, i) {
   card.querySelector(".card-retry").addEventListener("click", e => {
     e.stopPropagation();
     retryVideo(v.id);
+  });
+  card.querySelector(".card-open").addEventListener("click", e => {
+    e.stopPropagation();
+    if (v.filepath && native()) native().open_folder(v.filepath);
+  });
+  card.addEventListener("contextmenu", e => {
+    e.preventDefault();
+    showCardMenu(e.pageX, e.pageY, v);
+  });
+  // Drag and drop handlers for queue reordering
+  card.addEventListener("dragstart", e => {
+    card.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", v.id);
+  });
+  card.addEventListener("dragend", () => {
+    card.classList.remove("dragging");
+    document.querySelectorAll(".drop-target-before, .drop-target-after").forEach(c => {
+      c.classList.remove("drop-target-before", "drop-target-after");
+    });
+  });
+  card.addEventListener("dragover", e => {
+    e.preventDefault();
+    const dragging = document.querySelector(".card.dragging");
+    if (!dragging || dragging === card) return;
+    const r = card.getBoundingClientRect();
+    const before = (e.clientX - r.left) < r.width / 2;
+    card.classList.toggle("drop-target-before", before);
+    card.classList.toggle("drop-target-after", !before);
+  });
+  card.addEventListener("dragleave", () => {
+    card.classList.remove("drop-target-before", "drop-target-after");
+  });
+  card.addEventListener("drop", e => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (!draggedId || draggedId === v.id) return;
+    const before = card.classList.contains("drop-target-before");
+    card.classList.remove("drop-target-before", "drop-target-after");
+    moveVideo(draggedId, v.id, before);
   });
   return card;
 }
@@ -990,6 +1223,13 @@ function listenProgress(job_id, isRetry = false) {
       speedEl.textContent = "";
       card.classList.remove("downloading", "error", "cancelled");
       card.classList.add("done");
+      // Stash the resulting file path on the video so the per-card Open
+      // button and the right-click menu can use it.
+      const v = videos.find(x => x.id === ev.video_id);
+      if (v) {
+        if (ev.filename) v.filepath = ev.filename;
+        if (ev.video_title) v.title = ev.video_title;
+      }
     }
   };
   es.onerror = () => { es.close(); };

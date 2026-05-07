@@ -82,14 +82,26 @@ def load_window_state() -> dict:
 def save_window_state():
     if not state.window:
         return
+    # The window's width/height accessor calls into the GUI thread. If the
+    # window has already been torn down (or has not finished initializing),
+    # the underlying call returns None and unpacking fails. Treat that as
+    # "nothing to save" silently rather than logging a noisy traceback.
     try:
-        data = {
-            "width": int(state.window.width),
-            "height": int(state.window.height),
-            "x": int(state.window.x) if state.window.x is not None else None,
-            "y": int(state.window.y) if state.window.y is not None else None,
-        }
-        WINDOW_STATE.write_text(json.dumps(data), encoding="utf-8")
+        w = state.window.width
+        h = state.window.height
+        x = state.window.x
+        y = state.window.y
+    except Exception:
+        return
+    if not w or not h:
+        return
+    try:
+        WINDOW_STATE.write_text(json.dumps({
+            "width": int(w),
+            "height": int(h),
+            "x": int(x) if x is not None else None,
+            "y": int(y) if y is not None else None,
+        }), encoding="utf-8")
     except Exception:
         log.exception("Failed to save window state")
 

@@ -67,6 +67,7 @@ def index():
 
 class InfoRequest(BaseModel):
     url: str
+    limit: int | None = None  # cap on entries returned, useful for channels
 
 
 def _detect_platform(url: str | None) -> str:
@@ -110,6 +111,8 @@ def info(req: InfoRequest):
         "extract_flat": "in_playlist",
         "no_warnings": True,
     }
+    if req.limit and req.limit > 0:
+        opts["playlistend"] = int(req.limit)
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             data = ydl.extract_info(req.url, download=False)
@@ -150,10 +153,20 @@ def info(req: InfoRequest):
             "url": page_url,
             "uploader": e.get("uploader") or e.get("channel"),
             "platform": platform,
+            "is_live": bool(e.get("is_live") or e.get("live_status") in ("is_live", "is_upcoming")),
+            "filesize_approx": e.get("filesize_approx") or e.get("filesize"),
         })
     return {
         "playlist_url": req.url if is_playlist else None,
         "playlist_title": data.get("title") if is_playlist else None,
+        "is_channel": bool(
+            data.get("_type") == "playlist" and (
+                "channel" in (req.url or "").lower()
+                or "/@" in (req.url or "")
+                or "/c/" in (req.url or "")
+                or "/user/" in (req.url or "")
+            )
+        ),
         "videos": videos,
     }
 
@@ -287,17 +300,38 @@ def cancel_video(req: CancelRequest):
     return {"ok": True}
 
 
-def convert_template(user_template: str, is_playlist: bool, quality: str) -> str:
-    """Convert user template (with {tag} placeholders) to a yt-dlp output template."""
+def convert_template(
+    user_template: str,
+    is_playlist: bool,
+    quality: str,
+    index_override: int | None = None,
+) -> str:
+    """Convert user template (with {tag} placeholders) to a yt-dlp output template.
+
+    When index_override is given, {n} and {playlist_index} substitute that
+    explicit number (zero-padded) instead of yt-dlp's playlist_index. This is
+    how queue reordering renumbers files: each video downloads with its own
+    template, baking in its current queue position.
+    """
     t = user_template or "{n}{title}"
     today = datetime.now().strftime("%Y-%m-%d")
 
     # Conditional tags depend on context
-    if is_playlist:
+    if index_override is not None:
+        n_str = f"{index_override:02d}"
+        t = t.replace("{n}", n_str)
+        t = t.replace("{playlist_index}", n_str)
+        if is_playlist:
+            t = t.replace("{playlist}", "%(playlist_title)s")
+        else:
+            t = t.replace("{playlist}", "")
+    elif is_playlist:
         t = t.replace("{n}", "%(playlist_index)02d")
+        t = t.replace("{playlist_index}", "%(playlist_index)02d")
         t = t.replace("{playlist}", "%(playlist_title)s")
     else:
         t = t.replace("{n}", "")
+        t = t.replace("{playlist_index}", "")
         t = t.replace("{playlist}", "")
 
     # Direct field substitutions
@@ -327,12 +361,18 @@ def convert_template(user_template: str, is_playlist: bool, quality: str) -> str
     return t
 
 
-def build_opts(req: DownloadRequest, hook) -> dict[str, Any]:
+def build_opts(
+    req: DownloadRequest,
+    hook,
+    index_override: int | None = None,
+) -> dict[str, Any]:
     o = req.options
     dest = Path(req.destination)
     dest.mkdir(parents=True, exist_ok=True)
 
-    template = convert_template(o.filenameTemplate, req.is_playlist, req.quality)
+    template = convert_template(
+        o.filenameTemplate, req.is_playlist, req.quality, index_override
+    )
     outtmpl = str(dest / template)
 
     opts: dict[str, Any] = {
@@ -458,6 +498,7 @@ def download(req: DownloadRequest):
             "eta": d.get("eta"),
             "video_id": vid,
             "video_title": info_dict.get("title"),
+            "filename": d.get("filename") if status == "finished" else None,
         })
         if status == "finished" and vid:
             _append_history({
@@ -471,18 +512,18 @@ def download(req: DownloadRequest):
                 "completed_at": datetime.now().isoformat(timespec="seconds"),
             })
 
-    base_opts = build_opts(req, hook)
     concurrent = max(1, min(int(req.options.concurrent or 1), 4))
 
-    def _do_one(url: str, vid: str | None):
+    def _do_one(url: str, vid: str | None, position: int | None):
         # Skip immediately if cancellation arrived before download started
         if vid and CANCELLATIONS.get(vid):
             q.put({"status": "video_error", "video_id": vid, "error": "cancelled"})
             CANCELLATIONS.pop(vid, None)
             return
         try:
-            # Per-call YoutubeDL lets us scope errors and cancellations to one video
-            opts = dict(base_opts)
+            # Per-call opts lets us bake in this video's queue position so the
+            # filename template's {n} reflects the user's possibly-reordered queue.
+            opts = build_opts(req, hook, index_override=position)
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
         except _Cancelled:
@@ -496,13 +537,19 @@ def download(req: DownloadRequest):
 
     def run():
         try:
-            pairs = list(zip(req.urls, req.video_ids + [None] * (len(req.urls) - len(req.video_ids))))
-            if concurrent <= 1 or len(pairs) <= 1:
-                for url, vid in pairs:
-                    _do_one(url, vid)
+            ids = req.video_ids + [None] * (len(req.urls) - len(req.video_ids))
+            # Position is 1-based and reflects the queue order coming from the frontend.
+            # When the user is downloading a playlist, this becomes {n} in filenames.
+            triples = [
+                (url, vid, (i + 1) if req.is_playlist else None)
+                for i, (url, vid) in enumerate(zip(req.urls, ids))
+            ]
+            if concurrent <= 1 or len(triples) <= 1:
+                for url, vid, pos in triples:
+                    _do_one(url, vid, pos)
             else:
                 with ThreadPoolExecutor(max_workers=concurrent) as pool:
-                    list(pool.map(lambda p: _do_one(*p), pairs))
+                    list(pool.map(lambda p: _do_one(*p), triples))
             q.put({"status": "all_done",
                    "open_when_done": req.options.openWhenDone,
                    "destination": req.destination})
