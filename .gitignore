@@ -19,6 +19,9 @@ Output/
 # Logs and runtime data
 *.log
 
+# Logo build cache (Mona Sans is re-downloaded on demand by make_logo.py)
+.font-cache/
+
 # Editor / IDE
 .vscode/
 .idea/

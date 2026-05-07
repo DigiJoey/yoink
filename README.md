@@ -1,4 +1,7 @@
-# Yoink
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+  <img alt="Yoink" src="docs/logo-light.png" width="420">
+</picture>
 
 A Windows desktop app for downloading videos from YouTube, Instagram, Facebook, X, and most other sites yt-dlp supports.
 
