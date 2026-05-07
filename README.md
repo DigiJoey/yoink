@@ -7,6 +7,8 @@ A Windows desktop app for downloading videos from YouTube, Instagram, Facebook, 
 
 **[Download the latest release](https://github.com/DigiJoey/yoink/releases/latest)** · grab `YoinkSetup.exe`, double-click, install.
 
+![Yoink screenshot](docs/screenshot.png)
+
 ## Features
 
 - Paste any YouTube, Instagram, Facebook, or X link. The app supports about a thousand sites in total via yt-dlp.
