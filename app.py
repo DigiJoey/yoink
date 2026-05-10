@@ -2,6 +2,8 @@ import asyncio
 import json
 import logging
 import re
+import shutil
+import subprocess
 import sys
 import threading
 import urllib.parse
@@ -51,6 +53,34 @@ if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     BASE = Path(sys._MEIPASS)
 else:
     BASE = Path(__file__).parent
+
+
+def _locate_ffmpeg() -> str | None:
+    """Return an absolute path to ffmpeg.exe. Order of preference:
+    1. Sibling of the running executable (frozen, our installer bundles it there).
+    2. Whatever is on PATH (winget install, manual install, etc).
+    Caching the path lets us pass it explicitly to yt-dlp via `ffmpeg_location`,
+    which is more reliable than letting yt-dlp guess from os.environ['PATH']."""
+    if getattr(sys, "frozen", False):
+        candidate = Path(sys.executable).parent / "ffmpeg.exe"
+        if candidate.exists():
+            return str(candidate)
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    # Some Windows users only have ffmpeg via the winget yt-dlp package; try that
+    if sys.platform == "win32":
+        import os as _os
+        winget = _os.environ.get("LOCALAPPDATA")
+        if winget:
+            for p in Path(winget, "Microsoft", "WinGet", "Packages").glob(
+                "yt-dlp.FFmpeg*/**/ffmpeg.exe"
+            ):
+                return str(p)
+    return None
+
+
+FFMPEG_PATH: str | None = _locate_ffmpeg()
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
@@ -230,11 +260,25 @@ class CompressRequest(BaseModel):
     output_dir: str = ""               # "" means save next to input
 
 
+def _ffprobe_path() -> str:
+    """ffprobe ships next to ffmpeg in standard builds. Return its absolute path
+    when ffmpeg has been resolved, falling back to bare 'ffprobe' for PATH lookup."""
+    if FFMPEG_PATH:
+        sibling = Path(FFMPEG_PATH).with_name("ffprobe.exe" if sys.platform == "win32" else "ffprobe")
+        if sibling.exists():
+            return str(sibling)
+    return "ffprobe"
+
+
+def _ffmpeg_path() -> str:
+    return FFMPEG_PATH or "ffmpeg"
+
+
 def _ffprobe_duration(path: Path) -> float | None:
     """Return the video's duration in seconds via ffprobe, or None if it failed."""
     try:
         result = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(path)],
+            [_ffprobe_path(), "-v", "quiet", "-print_format", "json", "-show_format", str(path)],
             capture_output=True, text=True, timeout=20,
             creationflags=0x08000000 if sys.platform == "win32" else 0,
         )
@@ -263,7 +307,7 @@ def _compress_video(
 
     duration = _ffprobe_duration(in_path)
 
-    cmd = ["ffmpeg", "-y", "-i", str(in_path),
+    cmd = [_ffmpeg_path(), "-y", "-i", str(in_path),
            "-c:v", "libx264", "-preset", "medium"]
     if target_size_mb and duration and duration > 0:
         # Reserve ~128 kbps for audio, give the rest to video.
@@ -544,6 +588,12 @@ def build_opts(
         opts["cookiefile"] = o.cookieFile
     elif o.cookies != "off":
         opts["cookiesfrombrowser"] = (o.cookies,)
+
+    # Explicitly tell yt-dlp where ffmpeg lives so it does not depend on PATH.
+    # Without this, clip ranges and format merging fail with
+    # "ffmpeg is not installed" even when ffmpeg.exe is sitting next to Yoink.
+    if FFMPEG_PATH:
+        opts["ffmpeg_location"] = FFMPEG_PATH
 
     # Rate limiting (bytes per second)
     if o.rateLimit and o.rateLimit != "off":

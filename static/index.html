@@ -131,6 +131,25 @@
     <section id="grid" class="grid"></section>
   </main>
 
+  <!-- Error details modal -->
+  <div id="error-backdrop" class="settings-backdrop"></div>
+  <div id="error-modal" class="settings-modal" aria-hidden="true">
+    <div class="settings-frame" style="max-width: 720px; height: auto; max-height: 80vh">
+      <header class="settings-frame-head">
+        <h2>Error details</h2>
+        <button id="error-close" class="icon-btn" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <div class="error-body">
+        <pre id="error-text"></pre>
+      </div>
+      <div class="error-actions">
+        <button id="error-copy" class="btn ghost" type="button"><span>Copy</span></button>
+      </div>
+    </div>
+  </div>
+
   <div id="card-menu" class="card-menu" hidden>
     <button data-action="copy-url" type="button">Copy URL</button>
     <button data-action="open-url" type="button">Open in browser</button>

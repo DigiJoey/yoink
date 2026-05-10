@@ -72,12 +72,21 @@ def build():
     print("Running:", " ".join(cmd))
     subprocess.check_call(cmd, cwd=ROOT)
 
-    # Bundle ffmpeg next to Yoink.exe
+    # Bundle ffmpeg and ffprobe next to Yoink.exe
     ffmpeg = find_ffmpeg()
     if ffmpeg and ffmpeg.exists():
         dst = DIST_DIR / "ffmpeg.exe"
         print(f"Bundling ffmpeg from {ffmpeg} -> {dst}")
         shutil.copy2(ffmpeg, dst)
+        # ffprobe sits next to ffmpeg in standard builds; copy it too so the
+        # compress feature can probe video durations.
+        probe = ffmpeg.with_name("ffprobe.exe" if ffmpeg.suffix.lower() == ".exe" else "ffprobe")
+        if probe.exists():
+            probe_dst = DIST_DIR / "ffprobe.exe"
+            print(f"Bundling ffprobe from {probe} -> {probe_dst}")
+            shutil.copy2(probe, probe_dst)
+        else:
+            print(f"NOTE: ffprobe not found next to ffmpeg at {probe}. Compress duration probing will fail.")
     else:
         print("\nWARNING: ffmpeg.exe was not found on PATH or in winget.")
         print("Yoink.exe will run, but MP3 extraction and video+audio merging will fail")

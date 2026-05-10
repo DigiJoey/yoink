@@ -601,6 +601,42 @@ body.recording .readout-val {
 .card-open:hover { background: var(--border-hi); }
 .card.done .card-open { display: inline-flex; }
 
+/* Card error link (shows in the speed slot when a download fails) */
+.card-error-link {
+  font-family: var(--f-body);
+  font-size: 11px;
+  color: var(--rec);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 500;
+}
+.card-error-link:hover { color: var(--rec-hot); }
+
+/* Error details modal body */
+.error-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+}
+.error-body pre {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-mid);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.error-actions {
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* Right-click context menu */
 .card-menu {
   position: fixed;

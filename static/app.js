@@ -246,6 +246,29 @@ $("#url").addEventListener("input", autoFillTimesFromUrl);
 bindTimeWidget($("#clip-start"));
 bindTimeWidget($("#clip-end"));
 
+/* Error details modal */
+function showErrorModal(text) {
+  const t = String(text || "Unknown error");
+  $("#error-text").textContent = t;
+  $("#error-modal").classList.add("open");
+  $("#error-modal").setAttribute("aria-hidden", "false");
+  $("#error-backdrop").classList.add("show");
+}
+function hideErrorModal() {
+  $("#error-modal").classList.remove("open");
+  $("#error-modal").setAttribute("aria-hidden", "true");
+  $("#error-backdrop").classList.remove("show");
+}
+$("#error-close")?.addEventListener("click", hideErrorModal);
+$("#error-backdrop")?.addEventListener("click", hideErrorModal);
+$("#error-copy")?.addEventListener("click", () => {
+  const t = $("#error-text").textContent || "";
+  navigator.clipboard.writeText(t).catch(() => {});
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && $("#error-modal").classList.contains("open")) hideErrorModal();
+});
+
 /* Settings modal open/close */
 $("#settings-btn").addEventListener("click", openSettings);
 $("#help-btn").addEventListener("click", () => {
@@ -1362,7 +1385,23 @@ function listenProgress(job_id, isRetry = false) {
         const pct = card.querySelector(".card-pct");
         const sp = card.querySelector(".card-speed");
         if (pct) pct.textContent = isCancel ? "cancelled" : "failed";
-        if (sp) sp.textContent = isCancel ? "" : (ev.error || "").slice(0, 60);
+        if (sp) {
+          sp.innerHTML = "";
+          if (!isCancel && ev.error) {
+            // Replace the inline error text with a "Read more" link that opens
+            // the full message in the error modal. Long tracebacks were
+            // breaking the card layout before.
+            const link = document.createElement("button");
+            link.type = "button";
+            link.className = "card-error-link";
+            link.textContent = "Read error";
+            link.addEventListener("click", e => {
+              e.stopPropagation();
+              showErrorModal(ev.error);
+            });
+            sp.appendChild(link);
+          }
+        }
       }
       return;
     }
