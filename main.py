@@ -63,7 +63,7 @@ if sys.platform == "win32" and (EXE_DIR / "ffmpeg.exe").exists():
 ICON = BASE / "app.ico"
 WIN_TITLE = "Yoink"
 APP_ID = "joeyg.yoink.youtube.1"
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 
 # GitHub repo for self-update checks. Edit this when the project goes public.
 # Format: "owner/repo". The release is expected to attach YoinkSetup.exe as an asset.

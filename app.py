@@ -56,19 +56,35 @@ else:
 
 
 def _locate_ffmpeg() -> str | None:
-    """Return an absolute path to ffmpeg.exe. Order of preference:
-    1. Sibling of the running executable (frozen, our installer bundles it there).
-    2. Whatever is on PATH (winget install, manual install, etc).
-    Caching the path lets us pass it explicitly to yt-dlp via `ffmpeg_location`,
-    which is more reliable than letting yt-dlp guess from os.environ['PATH']."""
+    """Return an absolute path to ffmpeg. Tries every plausible location and
+    logs each attempt so we can diagnose installation issues from yoink.log."""
+    candidates: list[Path] = []
     if getattr(sys, "frozen", False):
-        candidate = Path(sys.executable).parent / "ffmpeg.exe"
-        if candidate.exists():
-            return str(candidate)
+        # Most common in a PyInstaller --onedir install: ffmpeg.exe sits next
+        # to Yoink.exe at the install root.
+        candidates.append(Path(sys.executable).parent / "ffmpeg.exe")
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            # Belt-and-braces: also try _MEIPASS itself and its parent in case
+            # the install layout differs from what we expect.
+            candidates.append(Path(meipass) / "ffmpeg.exe")
+            candidates.append(Path(meipass).parent / "ffmpeg.exe")
+    candidates.append(Path(__file__).parent / "ffmpeg.exe")
+
+    for c in candidates:
+        try:
+            exists = c.exists()
+        except Exception:
+            exists = False
+        log.info("ffmpeg candidate %s exists=%s", c, exists)
+        if exists:
+            return str(c)
+
     found = shutil.which("ffmpeg")
+    log.info("shutil.which('ffmpeg') -> %s", found)
     if found:
         return found
-    # Some Windows users only have ffmpeg via the winget yt-dlp package; try that
+
     if sys.platform == "win32":
         import os as _os
         winget = _os.environ.get("LOCALAPPDATA")
@@ -76,11 +92,16 @@ def _locate_ffmpeg() -> str | None:
             for p in Path(winget, "Microsoft", "WinGet", "Packages").glob(
                 "yt-dlp.FFmpeg*/**/ffmpeg.exe"
             ):
+                log.info("Found ffmpeg via winget: %s", p)
                 return str(p)
     return None
 
 
 FFMPEG_PATH: str | None = _locate_ffmpeg()
+FFMPEG_DIR: str | None = str(Path(FFMPEG_PATH).parent) if FFMPEG_PATH else None
+log.info("Yoink startup: sys.executable=%s frozen=%s _MEIPASS=%s",
+         sys.executable, getattr(sys, "frozen", False), getattr(sys, "_MEIPASS", None))
+log.info("Yoink startup: FFMPEG_PATH=%s  FFMPEG_DIR=%s", FFMPEG_PATH, FFMPEG_DIR)
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
@@ -590,10 +611,11 @@ def build_opts(
         opts["cookiesfrombrowser"] = (o.cookies,)
 
     # Explicitly tell yt-dlp where ffmpeg lives so it does not depend on PATH.
-    # Without this, clip ranges and format merging fail with
-    # "ffmpeg is not installed" even when ffmpeg.exe is sitting next to Yoink.
-    if FFMPEG_PATH:
-        opts["ffmpeg_location"] = FFMPEG_PATH
+    # Pass the directory; yt-dlp will resolve both ffmpeg.exe and ffprobe.exe
+    # from inside it. Passing a file path was being rejected by some yt-dlp
+    # versions on Windows even when the file existed.
+    if FFMPEG_DIR:
+        opts["ffmpeg_location"] = FFMPEG_DIR
 
     # Rate limiting (bytes per second)
     if o.rateLimit and o.rateLimit != "off":
