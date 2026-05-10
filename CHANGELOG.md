@@ -2,6 +2,21 @@
 
 All notable changes to Yoink are tracked here. The newest release is at the top.
 
+## v1.0.2 — 2026-05-10
+
+### Fixed
+- Pass an explicit `ffmpeg_location` to yt-dlp instead of relying on PATH
+  prepending. Clip-range downloads were aborting with "ffmpeg is not
+  installed" even when `ffmpeg.exe` was bundled next to `Yoink.exe`,
+  because yt-dlp's PATH lookup did not see our modification reliably.
+- Bundle `ffprobe.exe` alongside `ffmpeg.exe` so the Compress feature
+  can read video durations.
+
+### Changed
+- Failed cards now show a small "Read error" link that opens the full
+  yt-dlp message in a modal, with a Copy button. Long tracebacks no
+  longer overflow the card.
+
 ## v1.0.1 — 2026-05-07
 
 ### Added
@@ -25,13 +40,7 @@ All notable changes to Yoink are tracked here. The newest release is at the top.
 ### Fixed
 - Download errors no longer get silently swallowed. yt-dlp's `ignoreerrors`
   was on, which hid format failures (including missing-ffmpeg merges)
-  behind an empty status. The card now shows "failed" with a "Read error"
-  link that opens the full message in a modal, and the full yt-dlp trace
-  lands in `yoink.log`.
-- Pass an explicit `ffmpeg_location` to yt-dlp instead of relying on PATH
-  prepending. Clip-range downloads were aborting with "ffmpeg is not
-  installed" even when ffmpeg.exe was bundled next to Yoink.exe, because
-  yt-dlp's PATH lookup did not see our modification reliably.
+  behind an empty status. Failed videos now report the actual reason.
 
 ## v1.0.0 — 2026-05-07
 
