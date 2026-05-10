@@ -28,6 +28,23 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 log = logging.getLogger("yoink")
+ydl_log = logging.getLogger("yoink.ytdlp")
+
+
+class _YDLLogger:
+    """Forward yt-dlp's internal logging into our log file. yt-dlp expects
+    debug/info/warning/error methods. Anything starting with [debug] should
+    be filtered to debug level so the file does not get spammed."""
+
+    def debug(self, msg):
+        if msg.startswith("[debug] "):
+            ydl_log.debug(msg)
+        else:
+            ydl_log.info(msg)
+
+    def info(self, msg): ydl_log.info(msg)
+    def warning(self, msg): ydl_log.warning(msg)
+    def error(self, msg): ydl_log.error(msg)
 
 # When frozen by PyInstaller, data files live in sys._MEIPASS.
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
@@ -206,6 +223,135 @@ def _fetch_sb(video_id: str) -> list[dict]:
         return []
 
 
+class CompressRequest(BaseModel):
+    files: list[str]
+    target_size_mb: int | None = None  # None means use crf-based quality compression
+    crf: int = 23
+    output_dir: str = ""               # "" means save next to input
+
+
+def _ffprobe_duration(path: Path) -> float | None:
+    """Return the video's duration in seconds via ffprobe, or None if it failed."""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(path)],
+            capture_output=True, text=True, timeout=20,
+            creationflags=0x08000000 if sys.platform == "win32" else 0,
+        )
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            return float(data.get("format", {}).get("duration") or 0) or None
+    except Exception:
+        log.exception("ffprobe failed for %s", path)
+    return None
+
+
+def _compress_video(
+    in_path: Path,
+    out_path: Path,
+    target_size_mb: int | None,
+    crf: int,
+    progress_cb,
+) -> bool:
+    """Re-encode a video with ffmpeg. Reports progress 0..1 via progress_cb.
+
+    Returns True on success. The caller is responsible for replacing or moving
+    the resulting file as desired."""
+    if not in_path.exists():
+        return False
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    duration = _ffprobe_duration(in_path)
+
+    cmd = ["ffmpeg", "-y", "-i", str(in_path),
+           "-c:v", "libx264", "-preset", "medium"]
+    if target_size_mb and duration and duration > 0:
+        # Reserve ~128 kbps for audio, give the rest to video.
+        audio_kbps = 128
+        target_kbits = target_size_mb * 8192
+        video_kbps = max(int(target_kbits / duration) - audio_kbps, 100)
+        cmd += ["-b:v", f"{video_kbps}k", "-maxrate", f"{int(video_kbps * 1.5)}k",
+                "-bufsize", f"{video_kbps * 2}k",
+                "-c:a", "aac", "-b:a", f"{audio_kbps}k"]
+    else:
+        cmd += ["-crf", str(crf), "-c:a", "aac", "-b:a", "128k"]
+    cmd += ["-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(out_path)]
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        creationflags=0x08000000 if sys.platform == "win32" else 0,
+    )
+    last = 0.0
+    try:
+        for line in proc.stdout:
+            line = line.strip()
+            if line.startswith("out_time_us=") or line.startswith("out_time_ms="):
+                try:
+                    val = int(line.split("=", 1)[1])
+                    seconds = val / 1_000_000 if line.startswith("out_time_us=") else val / 1_000
+                    if duration:
+                        p = max(0.0, min(1.0, seconds / duration))
+                        if p - last >= 0.01 or p >= 0.999:
+                            last = p
+                            try:
+                                progress_cb(p)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+    finally:
+        proc.wait()
+    return proc.returncode == 0
+
+
+@app.post("/api/compress")
+def compress_videos(req: CompressRequest):
+    job_id = uuid.uuid4().hex
+    q: Queue = Queue()
+    JOBS[job_id] = q
+
+    def run():
+        try:
+            for raw in req.files:
+                inp = Path(raw)
+                if not inp.exists():
+                    q.put({"status": "compress_error", "file": raw, "error": "File not found"})
+                    continue
+
+                out_dir = Path(req.output_dir) if req.output_dir else inp.parent
+                out_path = out_dir / f"{inp.stem} (compressed).mp4"
+                # Avoid clobbering: if the target exists, append a counter.
+                if out_path.exists():
+                    i = 2
+                    while True:
+                        candidate = out_dir / f"{inp.stem} (compressed {i}).mp4"
+                        if not candidate.exists():
+                            out_path = candidate
+                            break
+                        i += 1
+
+                def cb(p, _file=raw):
+                    q.put({"status": "compress_progress", "file": _file, "progress": p})
+
+                ok = _compress_video(inp, out_path, req.target_size_mb, req.crf, cb)
+                if ok and out_path.exists():
+                    q.put({"status": "compress_done", "file": raw,
+                           "output": str(out_path), "size": out_path.stat().st_size})
+                else:
+                    q.put({"status": "compress_error", "file": raw,
+                           "error": "ffmpeg failed (see log file)"})
+            q.put({"status": "all_done"})
+        except Exception as e:
+            log.exception("Compress job failed")
+            q.put({"status": "error", "error": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"job_id": job_id}
+
+
 def _load_history() -> list[dict]:
     if HISTORY_FILE.exists():
         try:
@@ -275,6 +421,7 @@ class DownloadOptions(BaseModel):
     cookieFile: str = ""          # path to custom cookies.txt (overrides browser cookies if set)
     rateLimit: str = "off"        # off | 500K | 1M | 2M | 5M | 10M
     skipDownloaded: bool = True   # use the archive file to skip already-downloaded videos
+    maxFileSizeMB: int = 0        # 0 = off; otherwise compress after download if file exceeds this
 
 
 class DownloadRequest(BaseModel):
@@ -382,7 +529,14 @@ def build_opts(
         "no_warnings": True,
         "noprogress": True,
         "concurrent_fragment_downloads": 4,
-        "ignoreerrors": True,
+        # Do NOT swallow errors. Each video downloads in its own _do_one call,
+        # so a raised DownloadError gets caught and surfaced as a card error
+        # instead of disappearing into the void.
+        "ignoreerrors": False,
+        # Funnel yt-dlp's own log output into our log file. Without this,
+        # warnings about missing ffmpeg or unavailable formats are silenced
+        # by quiet=True and the user has no way to tell what failed.
+        "logger": _YDLLogger(),
     }
 
     # Authentication: custom cookie file overrides browser cookies if set
@@ -483,6 +637,8 @@ def download(req: DownloadRequest):
     q: Queue = Queue()
     JOBS[job_id] = q
 
+    finished_files: dict[str, str] = {}
+
     def hook(d):
         info_dict = d.get("info_dict") or {}
         vid = info_dict.get("id")
@@ -501,16 +657,59 @@ def download(req: DownloadRequest):
             "filename": d.get("filename") if status == "finished" else None,
         })
         if status == "finished" and vid:
+            fname = d.get("filename") or d.get("info_dict", {}).get("_filename")
+            if fname:
+                finished_files[vid] = fname
             _append_history({
                 "id": vid,
                 "title": info_dict.get("title") or "Unknown",
                 "uploader": info_dict.get("uploader") or info_dict.get("channel"),
                 "url": info_dict.get("webpage_url") or info_dict.get("original_url"),
-                "filepath": d.get("filename") or d.get("info_dict", {}).get("_filename"),
+                "filepath": fname,
                 "format": req.format,
                 "quality": req.quality,
                 "completed_at": datetime.now().isoformat(timespec="seconds"),
             })
+
+    def _maybe_compress(vid: str | None):
+        """If the user set a max-size cap and the resulting file exceeds it,
+        re-encode it in place to fit. MP4 video output only."""
+        cap = int(req.options.maxFileSizeMB or 0)
+        if cap <= 0 or not vid:
+            return
+        fname = finished_files.get(vid)
+        if not fname:
+            return
+        path = Path(fname)
+        if not path.exists():
+            return
+        size_mb = path.stat().st_size / (1024 * 1024)
+        if size_mb <= cap:
+            return
+        # Skip compression for non-MP4 outputs; we only re-encode video.
+        if path.suffix.lower() not in (".mp4", ".mkv", ".webm", ".mov"):
+            return
+        tmp_out = path.with_name(path.stem + ".compress.tmp.mp4")
+        log.info("Compressing %s (%.1f MB > %d MB cap)", path.name, size_mb, cap)
+        ok = _compress_video(path, tmp_out, cap, 23, lambda p: q.put({
+            "status": "compress_progress", "video_id": vid, "progress": p,
+        }))
+        if ok and tmp_out.exists():
+            try:
+                path.unlink()
+                tmp_out.rename(path)
+                q.put({"status": "compress_done", "video_id": vid,
+                       "size": path.stat().st_size, "output": str(path)})
+            except Exception as e:
+                log.exception("Replace after compress failed")
+                q.put({"status": "compress_error", "video_id": vid, "error": str(e)})
+        else:
+            try:
+                tmp_out.unlink(missing_ok=True)
+            except Exception:
+                pass
+            q.put({"status": "compress_error", "video_id": vid,
+                   "error": "ffmpeg failed (see log)"})
 
     concurrent = max(1, min(int(req.options.concurrent or 1), 4))
 
@@ -526,6 +725,7 @@ def download(req: DownloadRequest):
             opts = build_opts(req, hook, index_override=position)
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
+            _maybe_compress(vid)
         except _Cancelled:
             q.put({"status": "video_error", "video_id": vid, "error": "cancelled"})
         except Exception as e:

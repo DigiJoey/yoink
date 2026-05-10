@@ -939,6 +939,54 @@ body.recording .rec-btn:not(:disabled) .rec-dot {
   padding: 7px 14px;
 }
 
+/* Compress files list */
+.compress-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.compress-file-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--panel-lo);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.compress-file-row .name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.compress-file-row .progress {
+  flex: 0 0 100px;
+  height: 6px;
+  background: var(--panel);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.compress-file-row .progress > div {
+  height: 100%;
+  background: var(--rec);
+  width: 0%;
+  transition: width 0.2s, background 0.2s;
+}
+.compress-file-row.done .progress > div { background: var(--led-green); }
+.compress-file-row.error .progress > div { background: var(--rec); width: 100% !important; }
+.compress-file-row .meta {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
 /* History list */
 .history-list { display: flex; flex-direction: column; gap: 6px; max-height: 380px; overflow-y: auto; }
 .history-empty { color: var(--text-dim); font-size: 13px; padding: 12px; margin: 0; }

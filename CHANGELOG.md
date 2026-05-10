@@ -2,6 +2,32 @@
 
 All notable changes to Yoink are tracked here. The newest release is at the top.
 
+## v1.0.1 — 2026-05-07
+
+### Added
+- **Compress tab** in Settings. Pick local video files via a native file
+  dialog, choose either a CRF-23 quality compression or a target size cap
+  (50 / 100 / 250 / 500 / 1000 MB), and re-encode with the bundled ffmpeg.
+  Output saves next to the input by default; an output folder can be picked.
+- **Auto-compress on download.** Settings, Downloads tab, "Compress if larger
+  than" option. After a video finishes downloading, if the file exceeds the
+  cap, ffmpeg re-encodes it in place to fit.
+- **Default destination setting.** Settings, Downloads tab. The Destination
+  field on the homepage now reflects this default at every launch and is
+  treated as a one-time override for the current session.
+
+### Changed
+- The default destination on first run now uses the actual location of the
+  Windows Videos library via the shell API, instead of hardcoding
+  `C:\Users\<name>\Videos`. Users with their library on a different drive
+  get the correct path automatically.
+
+### Fixed
+- Download errors no longer get silently swallowed. yt-dlp's `ignoreerrors`
+  was on, which hid format failures (including missing-ffmpeg merges)
+  behind an empty status. The card now shows "failed" with the actual
+  reason, and the full yt-dlp trace lands in `yoink.log`.
+
 ## v1.0.0 — 2026-05-07
 
 First public release.

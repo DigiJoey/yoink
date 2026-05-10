@@ -63,7 +63,7 @@ if sys.platform == "win32" and (EXE_DIR / "ffmpeg.exe").exists():
 ICON = BASE / "app.ico"
 WIN_TITLE = "Yoink"
 APP_ID = "joeyg.yoink.youtube.1"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 
 # GitHub repo for self-update checks. Edit this when the project goes public.
 # Format: "owner/repo". The release is expected to attach YoinkSetup.exe as an asset.
@@ -220,6 +220,23 @@ class App:
         if result and len(result) > 0:
             return str(result[0])
         return None
+
+    def pick_video_files(self) -> list[str]:
+        """Open a multi-select dialog and return chosen video file paths."""
+        if not self.window:
+            return []
+        try:
+            result = self.window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=True,
+                file_types=(
+                    "Video files (*.mp4;*.mkv;*.webm;*.mov;*.avi;*.flv;*.m4v)",
+                    "All files (*.*)",
+                ),
+            )
+        except Exception:
+            return []
+        return [str(p) for p in (result or [])]
 
     # --- Folder picker ---
     def pick_folder(self, current: str = "") -> str | None:
@@ -381,6 +398,7 @@ class JsApi:
     def open_log(self): return self._app.open_log()
     def open_user_data(self): return self._app.open_user_data()
     def pick_cookies_file(self): return self._app.pick_cookies_file()
+    def pick_video_files(self): return self._app.pick_video_files()
     def check_yoink_update(self): return self._app.check_yoink_update()
     def download_yoink_update(self, installer_url): return self._app.download_yoink_update(installer_url)
 

@@ -175,6 +175,7 @@
           <button class="nav-item" data-tab="downloads">Downloads</button>
           <button class="nav-item" data-tab="auth">Authentication</button>
           <button class="nav-item" data-tab="history">History</button>
+          <button class="nav-item" data-tab="compress">Compress</button>
           <div class="nav-divider" aria-hidden="true"></div>
           <button class="nav-item" data-tab="help">Help</button>
           <button class="nav-item nav-item-small" data-tab="about">About</button>
@@ -417,6 +418,64 @@
                 <span class="t-help">Yoink keeps track of every video it finishes and skips them next time</span>
               </span>
             </label>
+            <div class="setting-row">
+              <span class="setting-label">Compress if larger than</span>
+              <select data-opt="maxFileSizeMB">
+                <option value="0" selected>Off</option>
+                <option value="100">100 MB</option>
+                <option value="250">250 MB</option>
+                <option value="500">500 MB</option>
+                <option value="1000">1 GB</option>
+                <option value="2000">2 GB</option>
+              </select>
+            </div>
+            <div class="setting-row stacked">
+              <span class="setting-label">Default destination folder</span>
+              <p class="t-help" style="margin:0 0 4px">Where new downloads go on app launch. The Destination field on the homepage overrides this for the current session and resets here next launch.</p>
+              <div class="row" style="gap:8px">
+                <input type="text" data-opt="defaultDestination" id="default-destination" spellcheck="false" autocomplete="off" style="flex:1">
+                <button id="default-dest-pick" class="btn ghost" type="button"><span>Browse</span></button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-page" data-page="compress">
+            <h3>Compress videos</h3>
+            <p class="page-help">Re-encode existing video files to reduce their size. Yoink uses the bundled ffmpeg with H.264 video and AAC audio. The original files are not modified.</p>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Files to compress</span>
+              <div id="compress-files" class="compress-files-list"><p class="history-empty">No files added yet.</p></div>
+              <div class="row" style="gap:8px;margin-top:8px">
+                <button id="compress-add-btn" class="btn ghost" type="button"><span>Add files…</span></button>
+                <button id="compress-clear-btn" class="btn ghost" type="button"><span>Clear</span></button>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <span class="setting-label">Target</span>
+              <select id="compress-target">
+                <option value="quality" selected>Quality (CRF 23, no size limit)</option>
+                <option value="50">~50 MB</option>
+                <option value="100">~100 MB</option>
+                <option value="250">~250 MB</option>
+                <option value="500">~500 MB</option>
+                <option value="1000">~1 GB</option>
+              </select>
+            </div>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Output folder (optional)</span>
+              <div class="row" style="gap:8px">
+                <input id="compress-out-dir" type="text" placeholder="(empty = save next to each input file)" spellcheck="false" autocomplete="off" style="flex:1">
+                <button id="compress-out-pick" class="btn ghost" type="button"><span>Browse</span></button>
+              </div>
+            </div>
+
+            <div class="row" style="gap:8px;margin-top:14px">
+              <button id="compress-start" class="btn" type="button" style="background:var(--rec);color:#fff"><span>Compress</span></button>
+            </div>
+            <p id="compress-status" class="update-result"></p>
           </section>
 
           <section class="settings-page" data-page="auth">

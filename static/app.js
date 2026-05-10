@@ -15,9 +15,16 @@ let videos = [];
 let selected = new Set();
 let playlistUrl = null;
 
-// Default destination filled by backend on first launch (per-machine path).
-$("#dest").value = localStorage.getItem("dest") || "";
-$("#dest").addEventListener("input", e => localStorage.setItem("dest", e.target.value));
+// Migration: previously the homepage destination was persisted under "dest";
+// now it is a one-time override and the persistent default lives under
+// "opt.defaultDestination". Carry the old value forward then drop the key.
+(function migrateDest() {
+  const legacy = localStorage.getItem("dest");
+  if (legacy && !localStorage.getItem("opt.defaultDestination")) {
+    localStorage.setItem("opt.defaultDestination", JSON.stringify(legacy));
+  }
+  if (legacy) localStorage.removeItem("dest");
+})();
 
 /* ---- Settings ---- */
 const Settings = {
@@ -36,6 +43,8 @@ const Settings = {
     cookieFile: "",
     rateLimit: "off",
     skipDownloaded: true,
+    maxFileSizeMB: "0",
+    defaultDestination: "",
   },
   get(key) {
     const raw = localStorage.getItem(`opt.${key}`);
@@ -74,6 +83,7 @@ function initSettingsUI() {
       // When defaults change, update homepage controls to match
       if (key === "defaultVideoQuality") setSegActive("resolution", v);
       if (key === "defaultMp3Bitrate") setSegActive("bitrate", v);
+      if (key === "defaultDestination") $("#dest").value = v;
     });
   });
 
@@ -346,14 +356,21 @@ window.addEventListener("pywebviewready", async () => {
       if (yvAbout) yvAbout.textContent = yv || "?";
     }
   } catch {}
+  // Resolve the default destination: stored setting wins; otherwise ask the
+  // backend for the system Videos folder. Then mirror it onto the homepage
+  // so each launch starts at the default. Editing the homepage field after
+  // this is treated as a one-time override; nothing gets persisted.
   try {
-    if (!localStorage.getItem("dest")) {
-      const dest = await native().default_destination();
-      if (dest) {
-        $("#dest").value = dest;
-        localStorage.setItem("dest", dest);
+    let def = Settings.get("defaultDestination");
+    if (!def) {
+      def = await native().default_destination();
+      if (def) {
+        Settings.set("defaultDestination", def);
+        const inp = document.getElementById("default-destination");
+        if (inp) inp.value = def;
       }
     }
+    if (def) $("#dest").value = def;
   } catch {}
 });
 
@@ -478,6 +495,156 @@ $("#cookie-pick")?.addEventListener("click", async () => {
     inp.dispatchEvent(new Event("change"));
   }
 });
+
+$("#default-dest-pick")?.addEventListener("click", async () => {
+  if (!native() || typeof native().pick_folder !== "function") return;
+  const path = await native().pick_folder($("#default-destination").value || "");
+  if (path) {
+    const inp = $("#default-destination");
+    inp.value = path;
+    inp.dispatchEvent(new Event("change"));
+  }
+});
+
+/* ---- Compress tab ---- */
+const compressFiles = [];
+
+function basename(p) {
+  return (p || "").split(/[\\/]/).pop();
+}
+
+function renderCompressFiles() {
+  const list = $("#compress-files");
+  if (!list) return;
+  if (!compressFiles.length) {
+    list.innerHTML = '<p class="history-empty">No files added yet.</p>';
+    return;
+  }
+  list.innerHTML = "";
+  compressFiles.forEach((f, i) => {
+    const row = document.createElement("div");
+    row.className = "compress-file-row";
+    row.dataset.path = f.path;
+    row.innerHTML = `
+      <span class="name" title="${escapeHtml(f.path)}">${escapeHtml(basename(f.path))}</span>
+      <span class="meta"></span>
+      <div class="progress"><div></div></div>
+      <button class="link" type="button">Remove</button>
+    `;
+    row.querySelector("button").addEventListener("click", () => {
+      compressFiles.splice(i, 1);
+      renderCompressFiles();
+    });
+    list.appendChild(row);
+  });
+}
+
+$("#compress-add-btn")?.addEventListener("click", async () => {
+  if (!native() || typeof native().pick_video_files !== "function") {
+    setCompressStatus("Add file is only available in the desktop app.", "err");
+    return;
+  }
+  const paths = await native().pick_video_files();
+  if (!paths || !paths.length) return;
+  for (const p of paths) {
+    if (!compressFiles.some(f => f.path === p)) {
+      compressFiles.push({ path: p });
+    }
+  }
+  renderCompressFiles();
+});
+
+$("#compress-clear-btn")?.addEventListener("click", () => {
+  compressFiles.length = 0;
+  renderCompressFiles();
+});
+
+$("#compress-out-pick")?.addEventListener("click", async () => {
+  if (!native() || typeof native().pick_folder !== "function") return;
+  const path = await native().pick_folder($("#compress-out-dir").value || "");
+  if (path) $("#compress-out-dir").value = path;
+});
+
+function setCompressStatus(msg, kind = "") {
+  const el = $("#compress-status");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.classList.remove("ok", "err");
+  if (kind) el.classList.add(kind);
+}
+
+$("#compress-start")?.addEventListener("click", async () => {
+  if (!compressFiles.length) {
+    setCompressStatus("Add at least one file first.", "err");
+    return;
+  }
+  const targetVal = $("#compress-target").value;
+  const target = targetVal === "quality" ? null : parseInt(targetVal, 10);
+  const outDir = $("#compress-out-dir").value.trim();
+  setCompressStatus("Starting compression…");
+  $("#compress-start").disabled = true;
+  try {
+    const r = await fetch("/api/compress", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: compressFiles.map(f => f.path),
+        target_size_mb: target,
+        crf: 23,
+        output_dir: outDir,
+      }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || "Failed");
+    const { job_id } = await r.json();
+    listenCompress(job_id);
+  } catch (e) {
+    setCompressStatus("Compression failed: " + e.message, "err");
+    $("#compress-start").disabled = false;
+  }
+});
+
+function listenCompress(job_id) {
+  const es = new EventSource(`/api/progress/${job_id}`);
+  let doneCount = 0;
+  es.onmessage = e => {
+    const ev = JSON.parse(e.data);
+    if (ev.status === "all_done") {
+      es.close();
+      $("#compress-start").disabled = false;
+      setCompressStatus(`Done. Compressed ${doneCount} of ${compressFiles.length}.`, "ok");
+      return;
+    }
+    if (ev.status === "error") {
+      es.close();
+      $("#compress-start").disabled = false;
+      setCompressStatus("Failed: " + ev.error, "err");
+      return;
+    }
+    const row = ev.file && document.querySelector(`.compress-file-row[data-path="${cssEscape(ev.file)}"]`);
+    if (!row) return;
+    const bar = row.querySelector(".progress > div");
+    const meta = row.querySelector(".meta");
+    if (ev.status === "compress_progress") {
+      bar.style.width = `${(ev.progress * 100).toFixed(1)}%`;
+      meta.textContent = `${(ev.progress * 100).toFixed(0)}%`;
+    } else if (ev.status === "compress_done") {
+      bar.style.width = "100%";
+      row.classList.add("done");
+      const sizeMB = (ev.size / (1024 * 1024)).toFixed(1);
+      meta.textContent = `${sizeMB} MB`;
+      doneCount++;
+    } else if (ev.status === "compress_error") {
+      row.classList.add("error");
+      meta.textContent = "failed";
+    }
+  };
+  es.onerror = () => { es.close(); $("#compress-start").disabled = false; };
+}
+
+function cssEscape(s) {
+  // Minimal CSS attribute-value escape: escape backslashes and double-quotes
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
 
 /* ---- Drag and drop URLs ---- */
 window.addEventListener("dragover", e => { e.preventDefault(); });
