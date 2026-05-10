@@ -2,6 +2,22 @@
 
 All notable changes to Yoink are tracked here. The newest release is at the top.
 
+## v1.0.5 — 2026-05-11
+
+### Fixed
+- **The real cause of all the ffmpeg failures**: the `yt-dlp.FFmpeg`
+  winget package ships its `bin/ffmpeg.exe` as a Chocolatey-style shim,
+  not the actual ffmpeg binary. When `build.py` copied that file into
+  the install folder it kept being a shim, which printed
+  `Cannot find file at '..\lib\ffmpeg\tools\ffmpeg\bin\ffmpeg.exe'`
+  and exited non-zero on every invocation. Yoink shipped a broken
+  ffmpeg from day one of bundling.
+- `build.py` now prefers `Gyan.FFmpeg` and `BtbN.FFmpeg` (real static
+  builds) over `yt-dlp.FFmpeg`, also checks Chocolatey's real binary
+  location and common manual install paths, and **validates each
+  candidate by running `-version`** before accepting it. Shims get
+  filtered out automatically.
+
 ## v1.0.4 — 2026-05-11
 
 ### Fixed

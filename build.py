@@ -15,7 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path  # noqa: F401
 
 ROOT = Path(__file__).parent
 DIST_DIR = ROOT / "dist" / "Yoink"
@@ -29,19 +29,59 @@ def ensure_pyinstaller():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
 
 
+def _ffmpeg_runs(path: Path) -> bool:
+    """A candidate is only acceptable if running it actually emits version info.
+    yt-dlp.FFmpeg ships a Chocolatey-style shim that fails when relocated; we
+    must validate each candidate, not just check it exists."""
+    if not path.exists():
+        return False
+    try:
+        r = subprocess.run(
+            [str(path), "-version"],
+            capture_output=True, text=True, timeout=10,
+        )
+        return r.returncode == 0 and "ffmpeg version" in (r.stdout or "")
+    except Exception:
+        return False
+
+
 def find_ffmpeg() -> Path | None:
-    # 1. PATH
-    path = shutil.which("ffmpeg")
-    if path:
-        return Path(path)
-    # 2. winget install location for yt-dlp.FFmpeg
+    """Find a real (non-shim) ffmpeg.exe. Prefer Gyan.FFmpeg and BtbN
+    distributions; fall back to chocolatey's real binary location, raw
+    manual installs, and finally whatever is on PATH. Always verifies
+    by running -version before returning a path."""
+    candidates: list[Path] = []
     localappdata = os.environ.get("LOCALAPPDATA", "")
     if localappdata:
         wg = Path(localappdata) / "Microsoft" / "WinGet" / "Packages"
         if wg.exists():
-            matches = list(wg.glob("yt-dlp.FFmpeg*/**/ffmpeg.exe"))
-            if matches:
-                return matches[0]
+            candidates += list(wg.glob("Gyan.FFmpeg*/**/bin/ffmpeg.exe"))
+            candidates += list(wg.glob("BtbN.FFmpeg*/**/bin/ffmpeg.exe"))
+            # yt-dlp.FFmpeg is last because its bin/ffmpeg.exe is a broken shim.
+            candidates += list(wg.glob("yt-dlp.FFmpeg*/**/bin/ffmpeg.exe"))
+
+    # Chocolatey: the file in bin/ is a shim; the real binary lives in lib/.
+    candidates.append(
+        Path("C:/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffmpeg.exe")
+    )
+    # Common manual install paths
+    for p in (
+        "C:/ffmpeg/bin/ffmpeg.exe",
+        "C:/Program Files/ffmpeg/bin/ffmpeg.exe",
+    ):
+        candidates.append(Path(p))
+
+    # Last resort: whatever is on PATH
+    path_str = shutil.which("ffmpeg")
+    if path_str:
+        candidates.append(Path(path_str))
+
+    for c in candidates:
+        if _ffmpeg_runs(c):
+            print(f"Verified ffmpeg at {c}")
+            return c
+        elif c.exists():
+            print(f"Skipping {c} (does not run cleanly)")
     return None
 
 
