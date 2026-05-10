@@ -103,6 +103,30 @@ log.info("Yoink startup: sys.executable=%s frozen=%s _MEIPASS=%s",
          sys.executable, getattr(sys, "frozen", False), getattr(sys, "_MEIPASS", None))
 log.info("Yoink startup: FFMPEG_PATH=%s  FFMPEG_DIR=%s", FFMPEG_PATH, FFMPEG_DIR)
 
+
+def _verify_ffmpeg_runs():
+    """Run ffmpeg -version once at startup and log the result. This lets us
+    tell the difference between 'we cannot find the binary' (path issue) and
+    'we found it but it will not execute' (AV blocking, broken file, etc)."""
+    if not FFMPEG_PATH:
+        log.warning("ffmpeg verification skipped: no FFMPEG_PATH")
+        return
+    try:
+        result = subprocess.run(
+            [FFMPEG_PATH, "-version"],
+            capture_output=True, text=True, timeout=10,
+            creationflags=0x08000000 if sys.platform == "win32" else 0,
+        )
+        first_line = (result.stdout or result.stderr or "").splitlines()
+        first_line = first_line[0] if first_line else "(no output)"
+        log.info("ffmpeg verification: returncode=%d first_line=%s",
+                 result.returncode, first_line)
+    except Exception:
+        log.exception("ffmpeg verification crashed")
+
+
+_verify_ffmpeg_runs()
+
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 
@@ -611,11 +635,12 @@ def build_opts(
         opts["cookiesfrombrowser"] = (o.cookies,)
 
     # Explicitly tell yt-dlp where ffmpeg lives so it does not depend on PATH.
-    # Pass the directory; yt-dlp will resolve both ffmpeg.exe and ffprobe.exe
-    # from inside it. Passing a file path was being rejected by some yt-dlp
-    # versions on Windows even when the file existed.
-    if FFMPEG_DIR:
-        opts["ffmpeg_location"] = FFMPEG_DIR
+    # Pass the FILE path: yt-dlp builds paths from the directory plus the
+    # program name, which on Windows means it loses the .exe extension unless
+    # it can parse the basename. The file-path form preserves .exe correctly.
+    if FFMPEG_PATH:
+        opts["ffmpeg_location"] = FFMPEG_PATH
+        log.info("Setting ffmpeg_location=%s for download", FFMPEG_PATH)
 
     # Rate limiting (bytes per second)
     if o.rateLimit and o.rateLimit != "off":

@@ -2,6 +2,18 @@
 
 All notable changes to Yoink are tracked here. The newest release is at the top.
 
+## v1.0.4 — 2026-05-11
+
+### Fixed
+- Revert to passing the **file path** of ffmpeg.exe to yt-dlp via
+  `ffmpeg_location`. v1.0.3 passed the directory, which yt-dlp on Windows
+  combines with bare program names (e.g. `<dir>/ffmpeg` with no `.exe`),
+  causing the version probe to fail and yt-dlp to declare "ffmpeg is not
+  installed".
+- At startup, actually execute `ffmpeg -version` and log the result so the
+  next failure mode (AV blocking, broken binary, encoding issues) is
+  immediately visible in `yoink.log`.
+
 ## v1.0.3 — 2026-05-11
 
 ### Fixed
