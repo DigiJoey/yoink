@@ -2,6 +2,17 @@
 
 All notable changes to Yoink are tracked here. The newest release is at the top.
 
+## v1.0.7 — 2026-05-12
+
+### Fixed
+- v1.0.6 was supposed to bundle deno.exe but the CI's `choco install deno`
+  step either failed silently or installed it somewhere `find_deno()`
+  did not check. Installed v1.0.6 still logged "deno not found on PATH"
+  on first download. The workflow now uses the official
+  `denoland/setup-deno@v2` action, which downloads the real standalone
+  deno binary and puts it on PATH. `find_deno()` picks it up via
+  `shutil.which("deno")` and bundles it next to Yoink.exe.
+
 ## v1.0.6 — 2026-05-11
 
 ### Added

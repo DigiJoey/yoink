@@ -34,8 +34,9 @@ jobs:
           choco install ffmpeg -y
 
       - name: Install deno (for bundling; JS runtime needed by yt-dlp's YouTube extractor)
-        run: |
-          choco install deno -y
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
 
       - name: Build Yoink.exe
         run: |
