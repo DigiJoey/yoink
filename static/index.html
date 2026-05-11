@@ -441,9 +441,12 @@
               <span class="setting-label">Compress if larger than</span>
               <select data-opt="maxFileSizeMB">
                 <option value="0" selected>Off</option>
+                <option value="10">10 MB (Discord free)</option>
+                <option value="25">25 MB</option>
+                <option value="50">50 MB (Discord Nitro Basic)</option>
                 <option value="100">100 MB</option>
                 <option value="250">250 MB</option>
-                <option value="500">500 MB</option>
+                <option value="500">500 MB (Discord Nitro)</option>
                 <option value="1000">1 GB</option>
                 <option value="2000">2 GB</option>
               </select>
@@ -475,10 +478,12 @@
               <span class="setting-label">Target</span>
               <select id="compress-target">
                 <option value="quality" selected>Quality (CRF 23, no size limit)</option>
-                <option value="50">~50 MB</option>
+                <option value="10">~10 MB (Discord free)</option>
+                <option value="25">~25 MB</option>
+                <option value="50">~50 MB (Discord Nitro Basic)</option>
                 <option value="100">~100 MB</option>
                 <option value="250">~250 MB</option>
-                <option value="500">~500 MB</option>
+                <option value="500">~500 MB (Discord Nitro)</option>
                 <option value="1000">~1 GB</option>
               </select>
             </div>

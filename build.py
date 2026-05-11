@@ -29,6 +29,47 @@ def ensure_pyinstaller():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
 
 
+def _deno_runs(path: Path) -> bool:
+    if not path.exists():
+        return False
+    try:
+        r = subprocess.run(
+            [str(path), "--version"],
+            capture_output=True, text=True, timeout=10,
+        )
+        return r.returncode == 0 and "deno" in (r.stdout or "").lower()
+    except Exception:
+        return False
+
+
+def find_deno() -> Path | None:
+    """Find a usable deno.exe. yt-dlp's YouTube extractor needs a JS runtime;
+    deno is the only one enabled by default. Prefer the real binary over
+    package-manager shims so the file works when copied next to Yoink.exe."""
+    candidates: list[Path] = []
+    localappdata = os.environ.get("LOCALAPPDATA", "")
+    if localappdata:
+        wg = Path(localappdata) / "Microsoft" / "WinGet" / "Packages"
+        if wg.exists():
+            candidates += list(wg.glob("DenoLand.Deno*/**/deno.exe"))
+    # Chocolatey: real binary lives in lib/; bin/ has a shim that breaks
+    # when relocated. (Same gotcha that bit us with ffmpeg in v1.0.5.)
+    candidates.append(Path("C:/ProgramData/chocolatey/lib/deno/tools/deno.exe"))
+    # Common manual install path (deno's official installer)
+    candidates.append(Path.home() / ".deno" / "bin" / "deno.exe")
+    # Last resort: whatever is on PATH
+    path_str = shutil.which("deno")
+    if path_str:
+        candidates.append(Path(path_str))
+    for c in candidates:
+        if _deno_runs(c):
+            print(f"Verified deno at {c}")
+            return c
+        elif c.exists():
+            print(f"Skipping {c} (does not run cleanly)")
+    return None
+
+
 def _ffmpeg_runs(path: Path) -> bool:
     """A candidate is only acceptable if running it actually emits version info.
     yt-dlp.FFmpeg ships a Chocolatey-style shim that fails when relocated; we
@@ -132,6 +173,18 @@ def build():
         print("Yoink.exe will run, but MP3 extraction and video+audio merging will fail")
         print("on machines without ffmpeg installed. To fix, install ffmpeg and rerun")
         print("this script, or copy ffmpeg.exe into dist/Yoink/ manually before packaging.\n")
+
+    # Bundle deno.exe next to Yoink.exe so yt-dlp's YouTube extractor has
+    # a JS runtime. Without it, some formats become unavailable.
+    deno = find_deno()
+    if deno and deno.exists():
+        dst = DIST_DIR / "deno.exe"
+        print(f"Bundling deno from {deno} -> {dst}")
+        shutil.copy2(deno, dst)
+    else:
+        print("\nWARNING: deno.exe was not found on PATH or in winget.")
+        print("Install via `winget install DenoLand.Deno` and rebuild, or YouTube")
+        print("format selection may degrade as yt-dlp deprecates non-JS extraction.\n")
 
     print(f"\nBuild complete: {DIST_DIR / 'Yoink.exe'}")
 

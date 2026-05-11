@@ -33,6 +33,10 @@ jobs:
         run: |
           choco install ffmpeg -y
 
+      - name: Install deno (for bundling; JS runtime needed by yt-dlp's YouTube extractor)
+        run: |
+          choco install deno -y
+
       - name: Build Yoink.exe
         run: |
           python build.py

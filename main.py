@@ -55,15 +55,16 @@ else:
     BASE = Path(__file__).parent
     EXE_DIR = BASE
 
-# A bundled ffmpeg.exe sits next to Yoink.exe (not inside _MEIPASS).
-# Prepend its directory to PATH so yt-dlp can find it without external installs.
-if sys.platform == "win32" and (EXE_DIR / "ffmpeg.exe").exists():
+# Bundled binaries (ffmpeg.exe, deno.exe) sit next to Yoink.exe, not inside
+# _MEIPASS. Prepend the exe directory to PATH so yt-dlp finds them without
+# external installs. deno is required by yt-dlp's YouTube extractor for JS.
+if sys.platform == "win32":
     os.environ["PATH"] = str(EXE_DIR) + os.pathsep + os.environ.get("PATH", "")
 
 ICON = BASE / "app.ico"
 WIN_TITLE = "Yoink"
 APP_ID = "joeyg.yoink.youtube.1"
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 
 # GitHub repo for self-update checks. Edit this when the project goes public.
 # Format: "owner/repo". The release is expected to attach YoinkSetup.exe as an asset.

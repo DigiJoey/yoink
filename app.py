@@ -127,6 +127,30 @@ def _verify_ffmpeg_runs():
 
 _verify_ffmpeg_runs()
 
+
+def _verify_deno_runs():
+    """yt-dlp's YouTube extractor needs a JS runtime. We bundle deno.exe next
+    to Yoink.exe and rely on the PATH prepend in main.py for discovery."""
+    deno = shutil.which("deno")
+    if not deno:
+        log.warning("deno not found on PATH; YouTube extraction may degrade")
+        return
+    try:
+        result = subprocess.run(
+            [deno, "--version"],
+            capture_output=True, text=True, timeout=10,
+            creationflags=0x08000000 if sys.platform == "win32" else 0,
+        )
+        first_line = (result.stdout or result.stderr or "").splitlines()
+        first_line = first_line[0] if first_line else "(no output)"
+        log.info("deno verification: path=%s returncode=%d first_line=%s",
+                 deno, result.returncode, first_line)
+    except Exception:
+        log.exception("deno verification crashed")
+
+
+_verify_deno_runs()
+
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 
@@ -355,8 +379,12 @@ def _compress_video(
     cmd = [_ffmpeg_path(), "-y", "-i", str(in_path),
            "-c:v", "libx264", "-preset", "medium"]
     if target_size_mb and duration and duration > 0:
-        # Reserve ~128 kbps for audio, give the rest to video.
-        audio_kbps = 128
+        if target_size_mb <= 10:
+            audio_kbps = 64
+        elif target_size_mb <= 25:
+            audio_kbps = 96
+        else:
+            audio_kbps = 128
         target_kbits = target_size_mb * 8192
         video_kbps = max(int(target_kbits / duration) - audio_kbps, 100)
         cmd += ["-b:v", f"{video_kbps}k", "-maxrate", f"{int(video_kbps * 1.5)}k",

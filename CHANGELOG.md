@@ -2,6 +2,23 @@
 
 All notable changes to Yoink are tracked here. The newest release is at the top.
 
+## v1.0.6 — 2026-05-11
+
+### Added
+- Discord-friendly compression targets: 10 MB (Discord free), 25 MB,
+  50 MB (Nitro Basic), 500 MB (Nitro). Available both in the Compress
+  tab dropdown and in the Downloads tab "Compress if larger than"
+  setting.
+- For very small targets, audio bitrate now scales down so more of the
+  size budget can go to video: 64 kbps audio at <=10 MB, 96 kbps at
+  <=25 MB, 128 kbps otherwise.
+- Bundle **deno.exe** next to Yoink.exe. yt-dlp's YouTube extractor
+  recently deprecated non-JS extraction; without a JS runtime, some
+  formats become unavailable and the log fills with EJS warnings.
+  `build.py` now searches winget (DenoLand.Deno) and PATH, validates
+  the binary by running `--version`, and bundles it. Startup logs a
+  deno verification line for parity with the ffmpeg check.
+
 ## v1.0.5 — 2026-05-11
 
 ### Fixed
