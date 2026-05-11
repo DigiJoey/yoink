@@ -226,6 +226,7 @@ def info(req: InfoRequest):
         "skip_download": True,
         "extract_flat": "in_playlist",
         "no_warnings": True,
+        "remote_components": ["ejs:github"],
     }
     if req.limit and req.limit > 0:
         opts["playlistend"] = int(req.limit)
@@ -654,6 +655,10 @@ def build_opts(
         # warnings about missing ffmpeg or unavailable formats are silenced
         # by quiet=True and the user has no way to tell what failed.
         "logger": _YDLLogger(),
+        # Allow yt-dlp to fetch its EJS challenge-solver script from GitHub.
+        # Without this, even with deno installed, n-sig solving fails on
+        # many YouTube formats and ffmpeg ends up with broken URLs.
+        "remote_components": ["ejs:github"],
     }
 
     # Authentication: custom cookie file overrides browser cookies if set
@@ -850,6 +855,16 @@ def download(req: DownloadRequest):
             opts = build_opts(req, hook, index_override=position)
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
+            # yt-dlp's ffmpeg-based clip downloader can return success even when
+            # ffmpeg silently failed (e.g. n-sig not solved, bad URL). If the
+            # progress hook never reported "finished" for this video, surface
+            # it as an error so the card does not get stuck in pending.
+            if vid and vid not in finished_files:
+                raise RuntimeError(
+                    "Download finished without writing a file. "
+                    "yt-dlp likely got an unusable format URL "
+                    "(JS challenge not solved or extractor regression)."
+                )
             _maybe_compress(vid)
         except _Cancelled:
             q.put({"status": "video_error", "video_id": vid, "error": "cancelled"})

@@ -2,6 +2,19 @@
 
 All notable changes to Yoink are tracked here. The newest release is at the top.
 
+## v1.0.8 — 2026-05-12
+
+### Fixed
+- Enable yt-dlp's `remote_components: ["ejs:github"]` so it can fetch
+  the EJS challenge-solver script from yt-dlp's GitHub releases at
+  runtime. v1.0.7 shipped deno (the JS runtime) but yt-dlp still
+  warned `Remote components challenge solver script (deno) and NPM
+  package (deno) were skipped. n challenge solving failed: Some
+  formats may be missing.` Without the solver script, n-sig
+  decryption fails on many YouTube formats and ffmpeg ends up
+  downloading from broken URLs, which manifested as silent failures
+  on clip-range downloads.
+
 ## v1.0.7 — 2026-05-12
 
 ### Fixed
