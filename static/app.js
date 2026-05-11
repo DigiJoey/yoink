@@ -44,6 +44,7 @@ const Settings = {
     rateLimit: "off",
     skipDownloaded: true,
     maxFileSizeMB: "0",
+    clipPrecision: "fast",
     defaultDestination: "",
   },
   get(key) {

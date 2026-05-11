@@ -540,6 +540,7 @@ class DownloadOptions(BaseModel):
     rateLimit: str = "off"        # off | 500K | 1M | 2M | 5M | 10M
     skipDownloaded: bool = True   # use the archive file to skip already-downloaded videos
     maxFileSizeMB: int = 0        # 0 = off; otherwise compress after download if file exceeds this
+    clipPrecision: str = "fast"   # fast = keyframe-aligned stream-copy; precise = re-encode for exact cuts
 
 
 class DownloadRequest(BaseModel):
@@ -756,7 +757,11 @@ def build_opts(
             }]
 
         opts["download_ranges"] = ranges_func
-        opts["force_keyframes_at_cuts"] = True
+        # Precise cuts re-encode the clip on CPU (~realtime). Fast cuts use
+        # ffmpeg stream-copy with HTTP range requests on the source, so they
+        # only download the clip's bytes and finish at network speed. The
+        # tradeoff is cuts snap to the nearest keyframe (typically <2s off).
+        opts["force_keyframes_at_cuts"] = (o.clipPrecision == "precise")
 
     return opts
 

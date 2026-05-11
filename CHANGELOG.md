@@ -2,6 +2,21 @@
 
 All notable changes to Yoink are tracked here. The newest release is at the top.
 
+## v1.0.9 — 2026-05-12
+
+### Added
+- **Clip cut precision** setting in Settings, Downloads tab. The old
+  behaviour was equivalent to "Precise" and was the reason a 7-minute
+  clip took 8 minutes to download: `force_keyframes_at_cuts=True` makes
+  yt-dlp tell ffmpeg to re-encode the entire clip on CPU so cuts land
+  on the exact requested timestamp. Re-encoding HD on CPU runs at
+  about real-time, hence the long wait.
+- New default is "Fast": ffmpeg uses `-c copy` with HTTP range requests,
+  so only the clip's bytes are downloaded and no re-encoding happens.
+  Cuts snap to the nearest keyframe (typically <2s off the requested
+  time) but the download finishes at network speed. "Precise" is still
+  selectable for users who need frame-accurate cuts.
+
 ## v1.0.8 — 2026-05-12
 
 ### Fixed

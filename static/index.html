@@ -437,6 +437,14 @@
                 <span class="t-help">Yoink keeps track of every video it finishes and skips them next time</span>
               </span>
             </label>
+            <div class="setting-row stacked">
+              <span class="setting-label">Clip cut precision</span>
+              <p class="t-help" style="margin:0 0 4px">Only matters when you set a clip range. Fast cuts snap to the nearest keyframe (within ~2 seconds of the requested time) and finish at network speed. Precise cuts hit the exact timestamp but re-encode the clip on CPU, which usually runs at about real-time.</p>
+              <select data-opt="clipPrecision">
+                <option value="fast" selected>Fast (keyframe-aligned, recommended)</option>
+                <option value="precise">Precise (re-encode for exact cuts)</option>
+              </select>
+            </div>
             <div class="setting-row">
               <span class="setting-label">Compress if larger than</span>
               <select data-opt="maxFileSizeMB">
