@@ -452,6 +452,35 @@ $("#history-clear-all")?.addEventListener("click", async () => {
   loadHistory();
 });
 
+/* ---- Logs tab ---- */
+async function loadLog() {
+  const view = $("#log-view");
+  if (!view) return;
+  view.textContent = "Loading...";
+  try {
+    const r = await fetch("/api/log");
+    const data = await r.json();
+    view.textContent = data.content || "(log is empty)";
+    const pathEl = $("#log-path");
+    if (pathEl && data.path) pathEl.textContent = data.path;
+    view.scrollTop = view.scrollHeight;
+  } catch (err) {
+    view.textContent = `Could not load log: ${err.message}`;
+  }
+}
+document.querySelector('[data-tab="logs"]')?.addEventListener("click", loadLog);
+$("#log-refresh")?.addEventListener("click", loadLog);
+$("#log-copy")?.addEventListener("click", async () => {
+  const view = $("#log-view");
+  if (!view) return;
+  try { await navigator.clipboard.writeText(view.textContent || ""); } catch {}
+});
+$("#log-clear")?.addEventListener("click", async () => {
+  if (!confirm("Clear the log file? This cannot be undone.")) return;
+  await fetch("/api/log/clear", { method: "POST" });
+  loadLog();
+});
+
 /* ---- About tab buttons ---- */
 $("#open-log")?.addEventListener("click", () => native() && native().open_log());
 $("#open-data")?.addEventListener("click", () => native() && native().open_user_data());

@@ -197,6 +197,7 @@
           <button class="nav-item" data-tab="compress">Compress</button>
           <div class="nav-divider" aria-hidden="true"></div>
           <button class="nav-item" data-tab="help">Help</button>
+          <button class="nav-item" data-tab="logs">Logs</button>
           <button class="nav-item nav-item-small" data-tab="about">About</button>
         </nav>
 
@@ -541,6 +542,18 @@
               <button id="history-clear-all" class="btn ghost" type="button"><span>Clear list and archive</span></button>
             </div>
             <div id="history-list" class="history-list"><p class="history-empty">No downloads yet.</p></div>
+          </section>
+
+          <section class="settings-page" data-page="logs">
+            <h3>Logs</h3>
+            <p class="page-help">Live view of <code>yoink.log</code>. Useful when a download fails or behaves oddly. The newest entries are at the bottom.</p>
+            <div class="row" style="gap:8px;margin:8px 0 12px">
+              <button id="log-refresh" class="btn ghost" type="button"><span>Refresh</span></button>
+              <button id="log-copy" class="btn ghost" type="button"><span>Copy</span></button>
+              <button id="log-clear" class="btn ghost" type="button"><span>Clear log</span></button>
+              <span id="log-path" class="t-help" style="margin-left:auto;align-self:center"></span>
+            </div>
+            <pre id="log-view" class="log-view">Loading...</pre>
           </section>
 
           <section class="settings-page" data-page="about">

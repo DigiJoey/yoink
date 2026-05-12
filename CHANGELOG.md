@@ -2,6 +2,24 @@
 
 All notable changes to Yoink are tracked here. The newest release is at the top.
 
+## v1.0.10 — 2026-05-12
+
+### Fixed
+- v1.0.9 broke downloads entirely when the user had Skip
+  already-downloaded enabled. The "silent download failure" guard
+  added in v1.0.8 fired on every legitimate archive skip: yt-dlp
+  saw "has already been recorded in the archive", returned cleanly
+  without firing a progress hook, and the guard then raised
+  `Download finished without writing a file`. The guard was based
+  on a misdiagnosis (the actual issue was the slow re-encode that
+  v1.0.9 fixed properly) so it has been removed.
+
+### Added
+- **Logs tab** in Settings, between Help and About. Shows the
+  contents of `yoink.log` live, with Refresh, Copy, and Clear log
+  buttons. The Clear button truncates the file; the next log entry
+  appears immediately.
+
 ## v1.0.9 — 2026-05-12
 
 ### Added

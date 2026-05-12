@@ -1023,6 +1023,23 @@ body.recording .rec-btn:not(:disabled) .rec-dot {
   flex-shrink: 0;
 }
 
+/* Log view */
+.log-view {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--panel-lo);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0;
+  max-height: 460px;
+  overflow: auto;
+  white-space: pre;
+  user-select: text;
+}
+
 /* History list */
 .history-list { display: flex; flex-direction: column; gap: 6px; max-height: 380px; overflow-y: auto; }
 .history-empty { color: var(--text-dim); font-size: 13px; padding: 12px; margin: 0; }

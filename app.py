@@ -219,6 +219,54 @@ def _pick_thumbnail(entry: dict) -> str | None:
     return None
 
 
+@app.get("/api/log")
+def get_log():
+    if not LOG_FILE.exists():
+        return {"content": "", "path": str(LOG_FILE)}
+    try:
+        content = LOG_FILE.read_text(encoding="utf-8", errors="replace")
+    except Exception as e:
+        return {"content": f"<could not read log: {e}>", "path": str(LOG_FILE)}
+    # Cap payload at ~500 KB. Older lines get dropped from the view but stay
+    # on disk; the file is the source of truth.
+    if len(content) > 500_000:
+        content = "...older entries omitted...\n" + content[-500_000:]
+    return {"content": content, "path": str(LOG_FILE)}
+
+
+@app.post("/api/log/clear")
+def clear_log():
+    # Truncate through the FileHandler that already has the file open. Opening
+    # a second handle on Windows risks the existing handler's stream position
+    # being past the new EOF, which produces a hole of NUL bytes on the next
+    # write.
+    cleared = False
+    for handler in logging.root.handlers:
+        if not isinstance(handler, logging.FileHandler):
+            continue
+        try:
+            same = Path(handler.baseFilename) == LOG_FILE
+        except Exception:
+            same = False
+        if not same:
+            continue
+        handler.acquire()
+        try:
+            handler.stream.seek(0)
+            handler.stream.truncate()
+            handler.stream.flush()
+            cleared = True
+        finally:
+            handler.release()
+    if not cleared and LOG_FILE.exists():
+        try:
+            with open(LOG_FILE, "w", encoding="utf-8") as f:
+                f.truncate(0)
+        except Exception as e:
+            raise HTTPException(500, f"could not clear log: {e}")
+    return {"ok": True}
+
+
 @app.post("/api/info")
 def info(req: InfoRequest):
     opts = {
@@ -860,16 +908,6 @@ def download(req: DownloadRequest):
             opts = build_opts(req, hook, index_override=position)
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
-            # yt-dlp's ffmpeg-based clip downloader can return success even when
-            # ffmpeg silently failed (e.g. n-sig not solved, bad URL). If the
-            # progress hook never reported "finished" for this video, surface
-            # it as an error so the card does not get stuck in pending.
-            if vid and vid not in finished_files:
-                raise RuntimeError(
-                    "Download finished without writing a file. "
-                    "yt-dlp likely got an unusable format URL "
-                    "(JS challenge not solved or extractor regression)."
-                )
             _maybe_compress(vid)
         except _Cancelled:
             q.put({"status": "video_error", "video_id": vid, "error": "cancelled"})

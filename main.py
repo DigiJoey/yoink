@@ -64,7 +64,7 @@ if sys.platform == "win32":
 ICON = BASE / "app.ico"
 WIN_TITLE = "Yoink"
 APP_ID = "joeyg.yoink.youtube.1"
-APP_VERSION = "1.0.9"
+APP_VERSION = "1.0.10"
 
 # GitHub repo for self-update checks. Edit this when the project goes public.
 # Format: "owner/repo". The release is expected to attach YoinkSetup.exe as an asset.
