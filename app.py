@@ -378,6 +378,41 @@ class CompressRequest(BaseModel):
     output_dir: str = ""               # "" means save next to input
 
 
+class TrimRequest(BaseModel):
+    input: str
+    start: float | None = None
+    end: float | None = None
+    mode: str = "fastest"              # fastest | accurate
+    output_dir: str = ""
+
+
+class ExtractAudioRequest(BaseModel):
+    input: str
+    format: str = "mp3"                # mp3 | wav | flac | aac
+    bitrate: int = 192                 # only used for mp3 / aac
+    output_dir: str = ""
+
+
+class SpeedRequest(BaseModel):
+    input: str
+    factor: float = 1.0
+    output_dir: str = ""
+
+
+class MergeRequest(BaseModel):
+    inputs: list[str]
+    output_name: str = "merged.mp4"
+    output_dir: str = ""
+    force_reencode: bool = False
+
+
+class ConvertRequest(BaseModel):
+    input: str
+    target_format: str = "mp4"         # mp4 | mkv | webm | mov
+    force_reencode: bool = False
+    output_dir: str = ""
+
+
 def _ffprobe_path() -> str:
     """ffprobe ships next to ffmpeg in standard builds. Return its absolute path
     when ffmpeg has been resolved, falling back to bare 'ffprobe' for PATH lookup."""
@@ -471,6 +506,66 @@ def _compress_video(
     return proc.returncode == 0
 
 
+def _cut_video(
+    in_path: Path,
+    out_path: Path,
+    start: float | None,
+    end: float | None,
+    accurate: bool,
+    progress_cb,
+) -> bool:
+    """Trim a downloaded video to a time range. `accurate=False` uses stream
+    copy (`-c copy`) for fast keyframe-aligned cuts. `accurate=True` re-encodes
+    so the cuts hit exact timestamps at the cost of ~realtime CPU time."""
+    if not in_path.exists():
+        return False
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd = [_ffmpeg_path(), "-y"]
+    # Input seek before -i is the fast path: ffmpeg jumps to the nearest
+    # keyframe instead of decoding-and-discarding from the start.
+    if start is not None and start > 0:
+        cmd += ["-ss", str(start)]
+    cmd += ["-i", str(in_path)]
+    duration = None
+    if end is not None:
+        duration = max(0.0, end - (start or 0.0))
+        if duration > 0:
+            cmd += ["-t", str(duration)]
+    if accurate:
+        cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "23",
+                "-c:a", "aac", "-b:a", "128k"]
+    else:
+        cmd += ["-c", "copy"]
+    cmd += ["-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(out_path)]
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        creationflags=0x08000000 if sys.platform == "win32" else 0,
+    )
+    last = 0.0
+    try:
+        for line in proc.stdout:
+            line = line.strip()
+            if duration and (line.startswith("out_time_us=") or line.startswith("out_time_ms=")):
+                try:
+                    val = int(line.split("=", 1)[1])
+                    seconds = val / 1_000_000 if line.startswith("out_time_us=") else val / 1_000
+                    p = max(0.0, min(1.0, seconds / duration))
+                    if p - last >= 0.01 or p >= 0.999:
+                        last = p
+                        try:
+                            progress_cb(p)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+    finally:
+        proc.wait()
+    return proc.returncode == 0
+
+
 @app.post("/api/compress")
 def compress_videos(req: CompressRequest):
     job_id = uuid.uuid4().hex
@@ -510,6 +605,430 @@ def compress_videos(req: CompressRequest):
             q.put({"status": "all_done"})
         except Exception as e:
             log.exception("Compress job failed")
+            q.put({"status": "error", "error": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"job_id": job_id}
+
+
+def _run_ffmpeg_progress(cmd: list[str], total_duration: float | None, progress_cb) -> bool:
+    """Spawn ffmpeg, parse `-progress pipe:1 -nostats` output, and emit progress
+    (0..1) via `progress_cb`. Caller is responsible for including -progress
+    and -nostats in cmd, and putting the output path last. Returns True on
+    exit 0."""
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        creationflags=0x08000000 if sys.platform == "win32" else 0,
+    )
+    last = 0.0
+    try:
+        for line in proc.stdout:
+            line = line.strip()
+            if total_duration and (line.startswith("out_time_us=") or line.startswith("out_time_ms=")):
+                try:
+                    val = int(line.split("=", 1)[1])
+                    seconds = val / 1_000_000 if line.startswith("out_time_us=") else val / 1_000
+                    p = max(0.0, min(1.0, seconds / total_duration))
+                    if p - last >= 0.01 or p >= 0.999:
+                        last = p
+                        try:
+                            progress_cb(p)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+    finally:
+        proc.wait()
+    return proc.returncode == 0
+
+
+def _unique_output(base: Path) -> Path:
+    """Return `base`, or `base` with a numeric suffix if a file is already
+    there, to avoid clobbering existing outputs."""
+    if not base.exists():
+        return base
+    stem = base.stem
+    suffix = base.suffix
+    parent = base.parent
+    i = 2
+    while True:
+        candidate = parent / f"{stem} ({i}){suffix}"
+        if not candidate.exists():
+            return candidate
+        i += 1
+
+
+def _probe_streams(path: Path) -> dict:
+    """Return a small summary of the file's streams via ffprobe: codec name +
+    width/height/sample_rate. Used by Merge to decide stream-copy vs re-encode
+    and by Convert to pick a sensible default."""
+    try:
+        result = subprocess.run(
+            [_ffprobe_path(), "-v", "quiet", "-print_format", "json",
+             "-show_streams", str(path)],
+            capture_output=True, text=True, timeout=20,
+            creationflags=0x08000000 if sys.platform == "win32" else 0,
+        )
+        data = json.loads(result.stdout or "{}")
+    except Exception:
+        return {}
+    out = {"video": None, "audio": None}
+    for s in data.get("streams") or []:
+        t = s.get("codec_type")
+        if t == "video" and out["video"] is None:
+            out["video"] = {
+                "codec": s.get("codec_name"),
+                "width": s.get("width"),
+                "height": s.get("height"),
+                "fps": s.get("r_frame_rate"),
+            }
+        elif t == "audio" and out["audio"] is None:
+            out["audio"] = {
+                "codec": s.get("codec_name"),
+                "sample_rate": s.get("sample_rate"),
+                "channels": s.get("channels"),
+            }
+    return out
+
+
+@app.post("/api/trim")
+def trim_video(req: TrimRequest):
+    job_id = uuid.uuid4().hex
+    q: Queue = Queue()
+    JOBS[job_id] = q
+
+    def run():
+        try:
+            inp = Path(req.input)
+            if not inp.exists():
+                q.put({"status": "trim_error", "error": "Input file not found"})
+                return
+            out_dir = Path(req.output_dir) if req.output_dir else inp.parent
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out = _unique_output(out_dir / f"{inp.stem} (clip){inp.suffix}")
+
+            def cb(p):
+                q.put({"status": "trim_progress", "progress": p})
+
+            ok = _cut_video(inp, out, req.start, req.end,
+                            accurate=(req.mode == "accurate"), progress_cb=cb)
+            if ok and out.exists():
+                q.put({"status": "trim_done", "output": str(out), "size": out.stat().st_size})
+            else:
+                q.put({"status": "trim_error", "error": "ffmpeg failed (see log)"})
+            q.put({"status": "all_done"})
+        except Exception as e:
+            log.exception("Trim job failed")
+            q.put({"status": "error", "error": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.post("/api/extract-audio")
+def extract_audio(req: ExtractAudioRequest):
+    job_id = uuid.uuid4().hex
+    q: Queue = Queue()
+    JOBS[job_id] = q
+
+    def run():
+        try:
+            inp = Path(req.input)
+            if not inp.exists():
+                q.put({"status": "audio_error", "error": "Input file not found"})
+                return
+            fmt = (req.format or "mp3").lower()
+            ext_map = {"mp3": "mp3", "wav": "wav", "flac": "flac", "aac": "m4a"}
+            ext = ext_map.get(fmt, "mp3")
+            out_dir = Path(req.output_dir) if req.output_dir else inp.parent
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out = _unique_output(out_dir / f"{inp.stem}.{ext}")
+
+            cmd = [_ffmpeg_path(), "-y", "-i", str(inp), "-vn"]
+            if fmt == "mp3":
+                cmd += ["-c:a", "libmp3lame", "-b:a", f"{req.bitrate}k"]
+            elif fmt == "wav":
+                cmd += ["-c:a", "pcm_s16le"]
+            elif fmt == "flac":
+                cmd += ["-c:a", "flac"]
+            elif fmt == "aac":
+                cmd += ["-c:a", "aac", "-b:a", f"{req.bitrate}k"]
+            else:
+                q.put({"status": "audio_error", "error": f"Unsupported format: {fmt}"})
+                return
+            cmd += ["-progress", "pipe:1", "-nostats", str(out)]
+
+            duration = _ffprobe_duration(inp)
+            ok = _run_ffmpeg_progress(cmd, duration, lambda p: q.put({
+                "status": "audio_progress", "progress": p,
+            }))
+            if ok and out.exists():
+                q.put({"status": "audio_done", "output": str(out), "size": out.stat().st_size})
+            else:
+                q.put({"status": "audio_error", "error": "ffmpeg failed (see log)"})
+            q.put({"status": "all_done"})
+        except Exception as e:
+            log.exception("Extract-audio job failed")
+            q.put({"status": "error", "error": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"job_id": job_id}
+
+
+def _atempo_chain(factor: float) -> str:
+    """ffmpeg's atempo filter only accepts 0.5..100.0 per stage. Chain stages
+    so any reasonable speed factor still works (e.g. 0.25 → 0.5,0.5)."""
+    if factor <= 0:
+        factor = 1.0
+    parts = []
+    remaining = factor
+    if remaining < 1.0:
+        while remaining < 0.5:
+            parts.append(0.5)
+            remaining /= 0.5
+        parts.append(remaining)
+    else:
+        while remaining > 2.0:
+            parts.append(2.0)
+            remaining /= 2.0
+        parts.append(remaining)
+    return ",".join(f"atempo={p:.4f}" for p in parts)
+
+
+@app.post("/api/speed")
+def speed_change(req: SpeedRequest):
+    job_id = uuid.uuid4().hex
+    q: Queue = Queue()
+    JOBS[job_id] = q
+
+    def run():
+        try:
+            inp = Path(req.input)
+            if not inp.exists():
+                q.put({"status": "speed_error", "error": "Input file not found"})
+                return
+            factor = float(req.factor or 1.0)
+            if factor <= 0:
+                q.put({"status": "speed_error", "error": "Speed factor must be > 0"})
+                return
+            label = f"{factor:.2f}".rstrip("0").rstrip(".") + "x"
+            out_dir = Path(req.output_dir) if req.output_dir else inp.parent
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out = _unique_output(out_dir / f"{inp.stem} ({label}){inp.suffix}")
+
+            vfilter = f"[0:v]setpts=PTS/{factor}[v]"
+            afilter = f"[0:a]{_atempo_chain(factor)}[a]"
+            cmd = [_ffmpeg_path(), "-y", "-i", str(inp),
+                   "-filter_complex", f"{vfilter};{afilter}",
+                   "-map", "[v]", "-map", "[a]",
+                   "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+                   "-c:a", "aac", "-b:a", "192k",
+                   "-movflags", "+faststart",
+                   "-progress", "pipe:1", "-nostats", str(out)]
+
+            src_duration = _ffprobe_duration(inp)
+            # The output is shorter (faster speed) or longer (slower speed)
+            # than the source. Scale duration for the progress estimate.
+            est_out_duration = src_duration / factor if src_duration else None
+
+            ok = _run_ffmpeg_progress(cmd, est_out_duration, lambda p: q.put({
+                "status": "speed_progress", "progress": p,
+            }))
+            if ok and out.exists():
+                q.put({"status": "speed_done", "output": str(out), "size": out.stat().st_size})
+            else:
+                q.put({"status": "speed_error", "error": "ffmpeg failed (see log)"})
+            q.put({"status": "all_done"})
+        except Exception as e:
+            log.exception("Speed job failed")
+            q.put({"status": "error", "error": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.post("/api/merge")
+def merge_videos(req: MergeRequest):
+    job_id = uuid.uuid4().hex
+    q: Queue = Queue()
+    JOBS[job_id] = q
+
+    def run():
+        try:
+            paths = [Path(p) for p in (req.inputs or [])]
+            if len(paths) < 2:
+                q.put({"status": "merge_error", "error": "Need at least 2 files to merge"})
+                return
+            for p in paths:
+                if not p.exists():
+                    q.put({"status": "merge_error", "error": f"File not found: {p}"})
+                    return
+
+            out_dir = Path(req.output_dir) if req.output_dir else paths[0].parent
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_name = req.output_name or "merged.mp4"
+            if not Path(out_name).suffix:
+                out_name += ".mp4"
+            out = _unique_output(out_dir / out_name)
+
+            # Decide stream-copy vs re-encode. Stream-copy requires all inputs
+            # to share codec / resolution / sample rate. If any differ, or the
+            # user forced it, re-encode through the concat filter.
+            stream_copy = not req.force_reencode
+            if stream_copy:
+                base = _probe_streams(paths[0])
+                for p in paths[1:]:
+                    other = _probe_streams(p)
+                    bv, ov = base.get("video") or {}, other.get("video") or {}
+                    ba, oa = base.get("audio") or {}, other.get("audio") or {}
+                    if (bv.get("codec") != ov.get("codec")
+                            or bv.get("width") != ov.get("width")
+                            or bv.get("height") != ov.get("height")
+                            or ba.get("codec") != oa.get("codec")
+                            or ba.get("sample_rate") != oa.get("sample_rate")):
+                        stream_copy = False
+                        break
+
+            total_duration = sum((_ffprobe_duration(p) or 0.0) for p in paths) or None
+
+            if stream_copy:
+                # Concat demuxer needs a small text file listing inputs.
+                listing = out_dir / f".yoink-merge-{job_id}.txt"
+                try:
+                    listing.write_text(
+                        "\n".join(f"file '{str(p).replace(chr(39), chr(39)+chr(92)+chr(39)+chr(39))}'" for p in paths),
+                        encoding="utf-8",
+                    )
+                    cmd = [_ffmpeg_path(), "-y", "-f", "concat", "-safe", "0",
+                           "-i", str(listing), "-c", "copy",
+                           "-movflags", "+faststart",
+                           "-progress", "pipe:1", "-nostats", str(out)]
+                    ok = _run_ffmpeg_progress(cmd, total_duration, lambda p: q.put({
+                        "status": "merge_progress", "progress": p,
+                    }))
+                finally:
+                    try:
+                        listing.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+            else:
+                # Concat filter with re-encode. -i each input, then filter.
+                cmd = [_ffmpeg_path(), "-y"]
+                for p in paths:
+                    cmd += ["-i", str(p)]
+                n = len(paths)
+                streams = "".join(f"[{i}:v:0][{i}:a:0]" for i in range(n))
+                fc = f"{streams}concat=n={n}:v=1:a=1[v][a]"
+                cmd += ["-filter_complex", fc, "-map", "[v]", "-map", "[a]",
+                        "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+                        "-c:a", "aac", "-b:a", "192k",
+                        "-movflags", "+faststart",
+                        "-progress", "pipe:1", "-nostats", str(out)]
+                ok = _run_ffmpeg_progress(cmd, total_duration, lambda p: q.put({
+                    "status": "merge_progress", "progress": p,
+                }))
+
+            if ok and out.exists():
+                q.put({"status": "merge_done", "output": str(out),
+                       "size": out.stat().st_size, "reencoded": not stream_copy})
+            else:
+                q.put({"status": "merge_error", "error": "ffmpeg failed (see log)"})
+            q.put({"status": "all_done"})
+        except Exception as e:
+            log.exception("Merge job failed")
+            q.put({"status": "error", "error": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.post("/api/convert")
+def convert_format(req: ConvertRequest):
+    job_id = uuid.uuid4().hex
+    q: Queue = Queue()
+    JOBS[job_id] = q
+
+    def run():
+        try:
+            inp = Path(req.input)
+            if not inp.exists():
+                q.put({"status": "convert_error", "error": "Input file not found"})
+                return
+            target = (req.target_format or "mp4").lower()
+            if target not in ("mp4", "mkv", "webm", "mov"):
+                q.put({"status": "convert_error", "error": f"Unsupported target: {target}"})
+                return
+            out_dir = Path(req.output_dir) if req.output_dir else inp.parent
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out = _unique_output(out_dir / f"{inp.stem}.{target}")
+
+            duration = _ffprobe_duration(inp)
+
+            if req.force_reencode:
+                # Pick codecs that the target container will accept.
+                if target == "webm":
+                    vcodec, acodec = "libvpx-vp9", "libopus"
+                else:
+                    vcodec, acodec = "libx264", "aac"
+                cmd = [_ffmpeg_path(), "-y", "-i", str(inp),
+                       "-c:v", vcodec, "-c:a", acodec, "-b:a", "192k"]
+                if target == "mp4":
+                    cmd += ["-movflags", "+faststart"]
+                cmd += ["-progress", "pipe:1", "-nostats", str(out)]
+                ok = _run_ffmpeg_progress(cmd, duration, lambda p: q.put({
+                    "status": "convert_progress", "progress": p,
+                }))
+                reencoded = True
+            else:
+                # Try stream-copy first (just remux).
+                cmd_copy = [_ffmpeg_path(), "-y", "-i", str(inp), "-c", "copy"]
+                if target == "mp4":
+                    cmd_copy += ["-movflags", "+faststart"]
+                cmd_copy += ["-progress", "pipe:1", "-nostats", str(out)]
+                ok = _run_ffmpeg_progress(cmd_copy, duration, lambda p: q.put({
+                    "status": "convert_progress", "progress": p,
+                }))
+                reencoded = False
+                if not ok or not out.exists():
+                    # Remux failed (codec incompatible with container). Fall
+                    # back to a full re-encode.
+                    try:
+                        out.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    if target == "webm":
+                        vcodec, acodec = "libvpx-vp9", "libopus"
+                    else:
+                        vcodec, acodec = "libx264", "aac"
+                    cmd_re = [_ffmpeg_path(), "-y", "-i", str(inp),
+                              "-c:v", vcodec, "-c:a", acodec, "-b:a", "192k"]
+                    if target == "mp4":
+                        cmd_re += ["-movflags", "+faststart"]
+                    cmd_re += ["-progress", "pipe:1", "-nostats", str(out)]
+                    ok = _run_ffmpeg_progress(cmd_re, duration, lambda p: q.put({
+                        "status": "convert_progress", "progress": p,
+                    }))
+                    reencoded = True
+
+            if ok and out.exists():
+                q.put({"status": "convert_done", "output": str(out),
+                       "size": out.stat().st_size, "reencoded": reencoded})
+            else:
+                q.put({"status": "convert_error", "error": "ffmpeg failed (see log)"})
+            q.put({"status": "all_done"})
+        except Exception as e:
+            log.exception("Convert job failed")
             q.put({"status": "error", "error": str(e)})
         finally:
             q.put(None)
@@ -588,7 +1107,7 @@ class DownloadOptions(BaseModel):
     rateLimit: str = "off"        # off | 500K | 1M | 2M | 5M | 10M
     skipDownloaded: bool = True   # use the archive file to skip already-downloaded videos
     maxFileSizeMB: int = 0        # 0 = off; otherwise compress after download if file exceeds this
-    clipPrecision: str = "fast"   # fast = keyframe-aligned stream-copy; precise = re-encode for exact cuts
+    clipMode: str = "fastest"     # fastest = full download + keyframe trim; accurate = full download + re-encoded cut; bandwidth = range-only ffmpeg download
 
 
 class DownloadRequest(BaseModel):
@@ -793,8 +1312,13 @@ def build_opts(
     if postprocessors:
         opts["postprocessors"] = postprocessors
 
-    # Clip range
-    if req.clip_start is not None or req.clip_end is not None:
+    # Clip range. Only the "bandwidth" mode goes through yt-dlp's clip-range
+    # codepath (FFmpegFD single-connection HTTP byte range). "fastest" and
+    # "accurate" download the full video normally with parallel fragments,
+    # then trim locally in _maybe_cut. On YouTube, parallel-fragment
+    # download is dramatically faster than the throttled single connection
+    # FFmpegFD gets, so on any decent line full-then-trim wins easily.
+    if (req.clip_start is not None or req.clip_end is not None) and o.clipMode == "bandwidth":
         start = req.clip_start
         end = req.clip_end
 
@@ -805,11 +1329,10 @@ def build_opts(
             }]
 
         opts["download_ranges"] = ranges_func
-        # Precise cuts re-encode the clip on CPU (~realtime). Fast cuts use
-        # ffmpeg stream-copy with HTTP range requests on the source, so they
-        # only download the clip's bytes and finish at network speed. The
-        # tradeoff is cuts snap to the nearest keyframe (typically <2s off).
-        opts["force_keyframes_at_cuts"] = (o.clipPrecision == "precise")
+        # Stream-copy at keyframe boundaries; no re-encode. Bandwidth mode is
+        # already the slow path (throttled single connection) so we never
+        # also pay the re-encode cost here.
+        opts["force_keyframes_at_cuts"] = False
 
     return opts
 
@@ -853,6 +1376,51 @@ def download(req: DownloadRequest):
                 "quality": req.quality,
                 "completed_at": datetime.now().isoformat(timespec="seconds"),
             })
+
+    def _maybe_cut(vid: str | None):
+        """For 'fastest' and 'accurate' clip modes, yt-dlp downloaded the full
+        video. Trim the requested range out of it locally with ffmpeg. The
+        'bandwidth' mode is a no-op here because the clip was already extracted
+        at download time via yt-dlp's download_ranges."""
+        if not vid:
+            return
+        if req.clip_start is None and req.clip_end is None:
+            return
+        mode = (req.options.clipMode or "fastest").lower()
+        if mode == "bandwidth":
+            return
+        fname = finished_files.get(vid)
+        if not fname:
+            return
+        path = Path(fname)
+        if not path.exists():
+            return
+        tmp_out = path.with_name(path.stem + ".cut.tmp" + path.suffix)
+        log.info("Trimming %s (mode=%s, start=%s, end=%s)",
+                 path.name, mode, req.clip_start, req.clip_end)
+        ok = _cut_video(
+            path, tmp_out, req.clip_start, req.clip_end,
+            accurate=(mode == "accurate"),
+            progress_cb=lambda p: q.put({
+                "status": "cut_progress", "video_id": vid, "progress": p,
+            }),
+        )
+        if ok and tmp_out.exists():
+            try:
+                path.unlink()
+                tmp_out.rename(path)
+                q.put({"status": "cut_done", "video_id": vid,
+                       "size": path.stat().st_size, "output": str(path)})
+            except Exception as e:
+                log.exception("Replace after cut failed")
+                q.put({"status": "cut_error", "video_id": vid, "error": str(e)})
+        else:
+            try:
+                tmp_out.unlink(missing_ok=True)
+            except Exception:
+                pass
+            q.put({"status": "cut_error", "video_id": vid,
+                   "error": "ffmpeg failed (see log)"})
 
     def _maybe_compress(vid: str | None):
         """If the user set a max-size cap and the resulting file exceeds it,
@@ -908,6 +1476,7 @@ def download(req: DownloadRequest):
             opts = build_opts(req, hook, index_override=position)
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
+            _maybe_cut(vid)
             _maybe_compress(vid)
         except _Cancelled:
             q.put({"status": "video_error", "video_id": vid, "error": "cancelled"})

@@ -40,6 +40,9 @@
         <button id="help-btn" class="icon-btn" title="Help" aria-label="Open help">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
         </button>
+        <button id="tools-btn" class="icon-btn" title="Tools" aria-label="Open tools">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        </button>
         <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Open settings">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
@@ -187,17 +190,18 @@
       <div class="settings-frame-body">
 
         <nav class="settings-nav">
+          <div class="nav-section">Configuration</div>
           <button class="nav-item active" data-tab="organization">Organization</button>
           <button class="nav-item" data-tab="format">Format</button>
           <button class="nav-item" data-tab="subtitles">Subtitles</button>
           <button class="nav-item" data-tab="sponsorblock">SponsorBlock</button>
           <button class="nav-item" data-tab="downloads">Downloads</button>
           <button class="nav-item" data-tab="auth">Authentication</button>
+          <div class="nav-section">Records &amp; diagnostics</div>
           <button class="nav-item" data-tab="history">History</button>
-          <button class="nav-item" data-tab="compress">Compress</button>
+          <button class="nav-item" data-tab="logs">Logs</button>
           <div class="nav-divider" aria-hidden="true"></div>
           <button class="nav-item" data-tab="help">Help</button>
-          <button class="nav-item" data-tab="logs">Logs</button>
           <button class="nav-item nav-item-small" data-tab="about">About</button>
         </nav>
 
@@ -439,11 +443,17 @@
               </span>
             </label>
             <div class="setting-row stacked">
-              <span class="setting-label">Clip cut precision</span>
-              <p class="t-help" style="margin:0 0 4px">Only matters when you set a clip range. Fast cuts snap to the nearest keyframe (within ~2 seconds of the requested time) and finish at network speed. Precise cuts hit the exact timestamp but re-encode the clip on CPU, which usually runs at about real-time.</p>
-              <select data-opt="clipPrecision">
-                <option value="fast" selected>Fast (keyframe-aligned, recommended)</option>
-                <option value="precise">Precise (re-encode for exact cuts)</option>
+              <span class="setting-label">Clip download mode</span>
+              <p class="t-help" style="margin:0 0 4px">Only matters when you set a clip range. YouTube throttles single-stream downloads, so fetching just the clip's bytes is usually slower than downloading the full video in parallel and trimming it.</p>
+              <ul class="t-help" style="margin:0 0 4px 16px;padding:0;list-style:disc">
+                <li><b>Fastest</b>: download the whole video over 4 parallel streams, then stream-copy trim (cuts snap to the nearest keyframe, ~&lt;2s off).</li>
+                <li><b>Frame-accurate</b>: same parallel download, then re-encode the clip for exact-timestamp cuts (cut step runs at about real-time of the clip).</li>
+                <li><b>Bandwidth-light</b>: ffmpeg fetches only the clip's bytes over a single throttled connection. Slow on fast lines; useful for a tiny clip out of a huge video on a slow line.</li>
+              </ul>
+              <select data-opt="clipMode">
+                <option value="fastest" selected>Fastest (full download + keyframe trim)</option>
+                <option value="accurate">Frame-accurate (full download + re-encoded cut)</option>
+                <option value="bandwidth">Bandwidth-light (range download)</option>
               </select>
             </div>
             <div class="setting-row">
@@ -468,47 +478,6 @@
                 <button id="default-dest-pick" class="btn ghost" type="button"><span>Browse</span></button>
               </div>
             </div>
-          </section>
-
-          <section class="settings-page" data-page="compress">
-            <h3>Compress videos</h3>
-            <p class="page-help">Re-encode existing video files to reduce their size. Yoink uses the bundled ffmpeg with H.264 video and AAC audio. The original files are not modified.</p>
-
-            <div class="setting-row stacked">
-              <span class="setting-label">Files to compress</span>
-              <div id="compress-files" class="compress-files-list"><p class="history-empty">No files added yet.</p></div>
-              <div class="row" style="gap:8px;margin-top:8px">
-                <button id="compress-add-btn" class="btn ghost" type="button"><span>Add files…</span></button>
-                <button id="compress-clear-btn" class="btn ghost" type="button"><span>Clear</span></button>
-              </div>
-            </div>
-
-            <div class="setting-row">
-              <span class="setting-label">Target</span>
-              <select id="compress-target">
-                <option value="quality" selected>Quality (CRF 23, no size limit)</option>
-                <option value="10">~10 MB (Discord free)</option>
-                <option value="25">~25 MB</option>
-                <option value="50">~50 MB (Discord Nitro Basic)</option>
-                <option value="100">~100 MB</option>
-                <option value="250">~250 MB</option>
-                <option value="500">~500 MB (Discord Nitro)</option>
-                <option value="1000">~1 GB</option>
-              </select>
-            </div>
-
-            <div class="setting-row stacked">
-              <span class="setting-label">Output folder (optional)</span>
-              <div class="row" style="gap:8px">
-                <input id="compress-out-dir" type="text" placeholder="(empty = save next to each input file)" spellcheck="false" autocomplete="off" style="flex:1">
-                <button id="compress-out-pick" class="btn ghost" type="button"><span>Browse</span></button>
-              </div>
-            </div>
-
-            <div class="row" style="gap:8px;margin-top:14px">
-              <button id="compress-start" class="btn" type="button" style="background:var(--rec);color:#fff"><span>Compress</span></button>
-            </div>
-            <p id="compress-status" class="update-result"></p>
           </section>
 
           <section class="settings-page" data-page="auth">
@@ -547,10 +516,12 @@
           <section class="settings-page" data-page="logs">
             <h3>Logs</h3>
             <p class="page-help">Live view of <code>yoink.log</code>. Useful when a download fails or behaves oddly. The newest entries are at the bottom.</p>
-            <div class="row" style="gap:8px;margin:8px 0 12px">
+            <div class="row" style="gap:8px;margin:8px 0 12px;flex-wrap:wrap">
               <button id="log-refresh" class="btn ghost" type="button"><span>Refresh</span></button>
               <button id="log-copy" class="btn ghost" type="button"><span>Copy</span></button>
               <button id="log-clear" class="btn ghost" type="button"><span>Clear log</span></button>
+              <button id="open-log" class="btn ghost" type="button"><span>Open log file</span></button>
+              <button id="open-data" class="btn ghost" type="button"><span>Open data folder</span></button>
               <span id="log-path" class="t-help" style="margin-left:auto;align-self:center"></span>
             </div>
             <pre id="log-view" class="log-view">Loading...</pre>
@@ -592,14 +563,299 @@
               <button id="reset-settings" class="btn" type="button" style="background:var(--rec);color:#fff"><span>Reset all settings</span></button>
             </div>
             <input id="import-file" type="file" accept=".json,application/json" hidden>
-
-            <div class="page-subhead" style="margin-top:24px">Diagnostics</div>
-            <div class="about-actions">
-              <button id="open-log" class="btn ghost" type="button"><span>Open log file</span></button>
-              <button id="open-data" class="btn ghost" type="button"><span>Open data folder</span></button>
-            </div>
           </section>
 
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tools modal -->
+  <div id="tools-backdrop" class="settings-backdrop"></div>
+  <div id="tools-modal" class="settings-modal" aria-hidden="true">
+    <div class="settings-frame">
+      <header class="settings-frame-head">
+        <h2>Tools</h2>
+        <button id="tools-close" class="icon-btn" aria-label="Close tools">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <div class="settings-frame-body">
+        <nav class="settings-nav">
+          <button class="tools-nav-item nav-item active" data-tool="compress">Compress</button>
+          <button class="tools-nav-item nav-item" data-tool="trim">Trim</button>
+          <button class="tools-nav-item nav-item" data-tool="audio">Extract audio</button>
+          <button class="tools-nav-item nav-item" data-tool="speed">Speed change</button>
+          <button class="tools-nav-item nav-item" data-tool="merge">Merge</button>
+          <button class="tools-nav-item nav-item" data-tool="convert">Convert format</button>
+        </nav>
+
+        <div class="settings-pages">
+          <section class="tools-page settings-page active" data-tool-page="compress">
+            <h3>Compress videos</h3>
+            <p class="page-help">Re-encode existing video files to reduce their size. Yoink uses the bundled ffmpeg with H.264 video and AAC audio. The original files are not modified.</p>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Files to compress</span>
+              <div id="compress-files" class="compress-files-list"><p class="history-empty">No files added yet.</p></div>
+              <div class="row" style="gap:8px;margin-top:8px">
+                <button id="compress-add-btn" class="btn ghost" type="button"><span>Add files…</span></button>
+                <button id="compress-clear-btn" class="btn ghost" type="button"><span>Clear</span></button>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <span class="setting-label">Target</span>
+              <select id="compress-target">
+                <option value="quality" selected>Quality (CRF 23, no size limit)</option>
+                <option value="10">~10 MB (Discord free)</option>
+                <option value="25">~25 MB</option>
+                <option value="50">~50 MB (Discord Nitro Basic)</option>
+                <option value="100">~100 MB</option>
+                <option value="250">~250 MB</option>
+                <option value="500">~500 MB (Discord Nitro)</option>
+                <option value="1000">~1 GB</option>
+              </select>
+            </div>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Output folder (optional)</span>
+              <div class="row" style="gap:8px">
+                <input id="compress-out-dir" type="text" placeholder="(empty = save next to each input file)" spellcheck="false" autocomplete="off" style="flex:1">
+                <button id="compress-out-pick" class="btn ghost" type="button"><span>Browse</span></button>
+              </div>
+            </div>
+
+            <div class="row" style="gap:8px;margin-top:14px">
+              <button id="compress-start" class="btn" type="button" style="background:var(--rec);color:#fff"><span>Compress</span></button>
+            </div>
+            <p id="compress-status" class="update-result"></p>
+          </section>
+          <section class="tools-page settings-page" data-tool-page="trim">
+            <h3>Trim</h3>
+            <p class="page-help">Clip a range out of a local video file. Uses the same engine as clip downloads.</p>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Input file</span>
+              <div class="row" style="gap:8px">
+                <input id="trim-input" type="text" placeholder="No file selected" spellcheck="false" autocomplete="off" readonly style="flex:1">
+                <button id="trim-pick" class="btn ghost" type="button"><span>Pick file…</span></button>
+              </div>
+            </div>
+
+            <div class="field-head">
+              <span class="field-label">Range</span>
+              <span class="field-rule"></span>
+            </div>
+            <div class="row clip-row">
+              <div class="time-input" id="trim-start">
+                <input type="text" maxlength="2" data-part="h" value="00" inputmode="numeric" autocomplete="off">
+                <span class="time-sep">:</span>
+                <input type="text" maxlength="2" data-part="m" value="00" inputmode="numeric" autocomplete="off">
+                <span class="time-sep">:</span>
+                <input type="text" maxlength="2" data-part="s" value="00" inputmode="numeric" autocomplete="off">
+              </div>
+              <span class="clip-arrow" aria-hidden="true">→</span>
+              <div class="time-input" id="trim-end">
+                <input type="text" maxlength="2" data-part="h" value="00" inputmode="numeric" autocomplete="off">
+                <span class="time-sep">:</span>
+                <input type="text" maxlength="2" data-part="m" value="00" inputmode="numeric" autocomplete="off">
+                <span class="time-sep">:</span>
+                <input type="text" maxlength="2" data-part="s" value="00" inputmode="numeric" autocomplete="off">
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <span class="setting-label">Cut precision</span>
+              <select id="trim-mode">
+                <option value="fastest" selected>Fastest (keyframe-aligned, stream-copy)</option>
+                <option value="accurate">Frame-accurate (re-encode)</option>
+              </select>
+            </div>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Output folder (optional)</span>
+              <div class="row" style="gap:8px">
+                <input id="trim-out-dir" type="text" placeholder="(empty = save next to input)" spellcheck="false" autocomplete="off" style="flex:1">
+                <button id="trim-out-pick" class="btn ghost" type="button"><span>Browse</span></button>
+              </div>
+            </div>
+
+            <div class="row" style="gap:8px;margin-top:14px">
+              <button id="trim-start-btn" class="btn" type="button" style="background:var(--rec);color:#fff"><span>Trim</span></button>
+            </div>
+            <div class="progress tool-progress" id="trim-progress-bar" hidden><div></div></div>
+            <p id="trim-status" class="update-result"></p>
+          </section>
+          <section class="tools-page settings-page" data-tool-page="audio">
+            <h3>Extract audio</h3>
+            <p class="page-help">Pull the audio out of a local video as MP3, WAV, FLAC, or AAC.</p>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Input file</span>
+              <div class="row" style="gap:8px">
+                <input id="audio-input" type="text" placeholder="No file selected" spellcheck="false" autocomplete="off" readonly style="flex:1">
+                <button id="audio-pick" class="btn ghost" type="button"><span>Pick file…</span></button>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <span class="setting-label">Format</span>
+              <select id="audio-format">
+                <option value="mp3" selected>MP3</option>
+                <option value="wav">WAV (lossless, large)</option>
+                <option value="flac">FLAC (lossless, compressed)</option>
+                <option value="aac">AAC (M4A container)</option>
+              </select>
+            </div>
+
+            <div class="setting-row" id="audio-bitrate-row">
+              <span class="setting-label">Bitrate</span>
+              <select id="audio-bitrate">
+                <option value="128">128 kbps</option>
+                <option value="192" selected>192 kbps</option>
+                <option value="256">256 kbps</option>
+                <option value="320">320 kbps</option>
+              </select>
+            </div>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Output folder (optional)</span>
+              <div class="row" style="gap:8px">
+                <input id="audio-out-dir" type="text" placeholder="(empty = save next to input)" spellcheck="false" autocomplete="off" style="flex:1">
+                <button id="audio-out-pick" class="btn ghost" type="button"><span>Browse</span></button>
+              </div>
+            </div>
+
+            <div class="row" style="gap:8px;margin-top:14px">
+              <button id="audio-start" class="btn" type="button" style="background:var(--rec);color:#fff"><span>Extract audio</span></button>
+            </div>
+            <div class="progress tool-progress" id="audio-progress-bar" hidden><div></div></div>
+            <p id="audio-status" class="update-result"></p>
+          </section>
+          <section class="tools-page settings-page" data-tool-page="speed">
+            <h3>Speed change</h3>
+            <p class="page-help">Speed a video up or down. Audio pitch is preserved via ffmpeg's <code>atempo</code> filter.</p>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Input file</span>
+              <div class="row" style="gap:8px">
+                <input id="speed-input" type="text" placeholder="No file selected" spellcheck="false" autocomplete="off" readonly style="flex:1">
+                <button id="speed-pick" class="btn ghost" type="button"><span>Pick file…</span></button>
+              </div>
+            </div>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Speed factor</span>
+              <div class="row" style="gap:6px;flex-wrap:wrap">
+                <button class="btn ghost speed-preset" type="button" data-factor="0.5">0.5x</button>
+                <button class="btn ghost speed-preset" type="button" data-factor="0.75">0.75x</button>
+                <button class="btn ghost speed-preset" type="button" data-factor="1.25">1.25x</button>
+                <button class="btn ghost speed-preset" type="button" data-factor="1.5">1.5x</button>
+                <button class="btn ghost speed-preset" type="button" data-factor="2">2x</button>
+                <input id="speed-factor" type="number" min="0.25" max="4" step="0.05" value="1.5" style="width:90px">
+                <span class="t-help" style="align-self:center">x</span>
+              </div>
+            </div>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Output folder (optional)</span>
+              <div class="row" style="gap:8px">
+                <input id="speed-out-dir" type="text" placeholder="(empty = save next to input)" spellcheck="false" autocomplete="off" style="flex:1">
+                <button id="speed-out-pick" class="btn ghost" type="button"><span>Browse</span></button>
+              </div>
+            </div>
+
+            <div class="row" style="gap:8px;margin-top:14px">
+              <button id="speed-start" class="btn" type="button" style="background:var(--rec);color:#fff"><span>Change speed</span></button>
+            </div>
+            <div class="progress tool-progress" id="speed-progress-bar" hidden><div></div></div>
+            <p id="speed-status" class="update-result"></p>
+          </section>
+          <section class="tools-page settings-page" data-tool-page="merge">
+            <h3>Merge</h3>
+            <p class="page-help">Concatenate multiple video files into one. Yoink auto-detects whether all inputs share the same codec/resolution/sample rate. If they do, it stream-copies (lossless, fast). If not, it re-encodes through the concat filter. You can also force re-encode below.</p>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Files to merge (top to bottom = play order)</span>
+              <div id="merge-files" class="compress-files-list"><p class="history-empty">No files added yet.</p></div>
+              <div class="row" style="gap:8px;margin-top:8px">
+                <button id="merge-add-btn" class="btn ghost" type="button"><span>Add files…</span></button>
+                <button id="merge-clear-btn" class="btn ghost" type="button"><span>Clear</span></button>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <span class="setting-label">Output filename</span>
+              <input id="merge-output-name" type="text" value="merged.mp4" spellcheck="false" autocomplete="off">
+            </div>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Output folder (optional)</span>
+              <div class="row" style="gap:8px">
+                <input id="merge-out-dir" type="text" placeholder="(empty = save next to first input)" spellcheck="false" autocomplete="off" style="flex:1">
+                <button id="merge-out-pick" class="btn ghost" type="button"><span>Browse</span></button>
+              </div>
+            </div>
+
+            <label class="toggle" style="margin-top:8px">
+              <input type="checkbox" id="merge-force-reencode">
+              <span class="toggle-text">
+                <span class="t-title">Force re-encode</span>
+                <span class="t-help">Always re-encode through the concat filter, even when codecs match. Slower but more reliable for unusual sources.</span>
+              </span>
+            </label>
+
+            <div class="row" style="gap:8px;margin-top:14px">
+              <button id="merge-start" class="btn" type="button" style="background:var(--rec);color:#fff"><span>Merge</span></button>
+            </div>
+            <div class="progress tool-progress" id="merge-progress-bar" hidden><div></div></div>
+            <p id="merge-status" class="update-result"></p>
+          </section>
+          <section class="tools-page settings-page" data-tool-page="convert">
+            <h3>Convert format</h3>
+            <p class="page-help">Change a video's container. Yoink tries stream-copy first (just remux, no re-encode, near-instant). If the source's codec is incompatible with the target container, it falls back to re-encode. Force re-encode if you want to switch codecs too.</p>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Input file</span>
+              <div class="row" style="gap:8px">
+                <input id="convert-input" type="text" placeholder="No file selected" spellcheck="false" autocomplete="off" readonly style="flex:1">
+                <button id="convert-pick" class="btn ghost" type="button"><span>Pick file…</span></button>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <span class="setting-label">Target format</span>
+              <select id="convert-target">
+                <option value="mp4" selected>MP4</option>
+                <option value="mkv">MKV</option>
+                <option value="webm">WebM</option>
+                <option value="mov">MOV</option>
+              </select>
+            </div>
+
+            <div class="setting-row stacked">
+              <span class="setting-label">Output folder (optional)</span>
+              <div class="row" style="gap:8px">
+                <input id="convert-out-dir" type="text" placeholder="(empty = save next to input)" spellcheck="false" autocomplete="off" style="flex:1">
+                <button id="convert-out-pick" class="btn ghost" type="button"><span>Browse</span></button>
+              </div>
+            </div>
+
+            <label class="toggle" style="margin-top:8px">
+              <input type="checkbox" id="convert-force-reencode">
+              <span class="toggle-text">
+                <span class="t-title">Force re-encode</span>
+                <span class="t-help">Re-encode to H.264 (or VP9 for WebM). Use when you need to change codecs, not just the container.</span>
+              </span>
+            </label>
+
+            <div class="row" style="gap:8px;margin-top:14px">
+              <button id="convert-start" class="btn" type="button" style="background:var(--rec);color:#fff"><span>Convert</span></button>
+            </div>
+            <div class="progress tool-progress" id="convert-progress-bar" hidden><div></div></div>
+            <p id="convert-status" class="update-result"></p>
+          </section>
         </div>
       </div>
     </div>

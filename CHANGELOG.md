@@ -2,6 +2,59 @@
 
 All notable changes to Yoink are tracked here. The newest release is at the top.
 
+## v1.1.0 — 2026-05-12
+
+### Added
+- **Tools panel.** New wrench icon in the header opens a Tools modal
+  with five utilities that work on local files:
+  - *Trim*: clip a range out of a local video using the same engine
+    introduced for clip downloads in this release. Fastest (stream
+    copy) and Frame-accurate (re-encode) modes available.
+  - *Extract audio*: pull audio out of a video as MP3, WAV, FLAC, or
+    AAC. Bitrate selectable for MP3.
+  - *Speed change*: 0.5x to 2x speed presets plus custom factor. Audio
+    pitch is preserved via ffmpeg's atempo filter.
+  - *Merge*: concat multiple videos into one. Stream-copies when codecs
+    match, re-encodes otherwise.
+  - *Convert format*: container swap between MP4, MKV, WebM, MOV.
+    Stream-copy by default with re-encode fallback when needed.
+- **Settings reorg.** Tabs are grouped with section headers:
+  *Configuration* (Organization, Format, Subtitles, SponsorBlock,
+  Downloads, Authentication), *Records & diagnostics* (History, Logs),
+  and *Meta* (Help, About). The old Compress tab is gone — Compress
+  now lives in the Tools modal alongside the new utilities.
+- **Diagnostics consolidation.** Open log file and Open data folder
+  buttons moved from the About tab to the Logs tab toolbar. Easier to
+  find when actually debugging something.
+
+### Changed (clip downloads)
+- Clip downloads use yt-dlp's normal parallel-fragment downloader by
+  default and trim the file locally with ffmpeg afterward. v1.0.9
+  flipped the re-encode flag but clip downloads were still slow because
+  yt-dlp's clip-range mode uses a single HTTP connection and YouTube
+  throttles single streams. Parallel fragment download saturates the
+  line, then the local trim takes seconds (stream-copy) or about the
+  clip's duration (re-encode). Progress bars also now move during clip
+  downloads in the two "full download" modes, because the native
+  downloader fires the same progress hooks as a normal download.
+- The old `clipPrecision` (Fast/Precise) setting is replaced with
+  `clipMode` (Fastest/Frame-accurate/Bandwidth-light) in the Downloads
+  tab. Default is **Fastest**.
+  - *Fastest*: full parallel download + ffmpeg `-c copy` trim.
+    Keyframe-aligned cuts (within ~2 seconds of the requested time).
+  - *Frame-accurate*: full parallel download + ffmpeg re-encode of the
+    clip. Exact timestamps. Cut step runs at ~realtime of the clip.
+  - *Bandwidth-light*: keeps the v1.0.9 behaviour (range-only download
+    via FFmpegFD with stream-copy). Slow on fast lines because of
+    YouTube's per-connection throttling; useful only for tiny clips
+    out of huge videos on a slow connection.
+- The backend emits `cut_progress`, `cut_done`, and `cut_error` events
+  during the local trim step. The download card UI does not yet show
+  these — the card flips to "done" when yt-dlp finishes and the trim
+  happens in the background. For Fastest mode this is unnoticeable;
+  for Frame-accurate on long clips it can briefly mislead. UX polish
+  for that is deferred.
+
 ## v1.0.10 — 2026-05-12
 
 ### Fixed

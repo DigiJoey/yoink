@@ -969,6 +969,17 @@ body.recording .rec-btn:not(:disabled) .rec-dot {
   background: var(--border);
   flex-shrink: 0;
 }
+.nav-section {
+  padding: 10px 14px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  user-select: none;
+  pointer-events: none;
+}
+.nav-section:first-child { padding-top: 4px; }
 .nav-item-small {
   font-size: 12.5px;
   color: var(--text-dim);
@@ -1016,6 +1027,26 @@ body.recording .rec-btn:not(:disabled) .rec-dot {
 }
 .compress-file-row.done .progress > div { background: var(--led-green); }
 .compress-file-row.error .progress > div { background: var(--rec); width: 100% !important; }
+
+/* Single-tool progress bar (Trim / Audio / Speed / Merge / Convert) */
+.tool-progress {
+  width: 100%;
+  height: 8px;
+  background: var(--panel);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+.tool-progress > div {
+  height: 100%;
+  background: var(--rec);
+  width: 0%;
+  transition: width 0.2s;
+}
+
+/* Speed presets: highlight whichever matches the current factor input */
+.speed-preset { padding: 6px 10px; font-size: 12.5px; }
+
 .compress-file-row .meta {
   font-family: var(--f-mono);
   font-size: 11px;

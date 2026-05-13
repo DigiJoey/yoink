@@ -44,7 +44,7 @@ const Settings = {
     rateLimit: "off",
     skipDownloaded: true,
     maxFileSizeMB: "0",
-    clipPrecision: "fast",
+    clipMode: "fastest",
     defaultDestination: "",
   },
   get(key) {
@@ -293,12 +293,39 @@ function closeSettings() {
   $("#settings-backdrop").classList.remove("show");
 }
 
-/* Settings tab switching */
-$$('.nav-item').forEach(b => {
+/* Settings tab switching. Scoped to the settings modal so the Tools modal's
+   nav-items (which also share the .nav-item class for styling) do not
+   interfere when clicked. */
+$$('#settings-modal .nav-item').forEach(b => {
   b.addEventListener('click', () => {
     const tab = b.dataset.tab;
-    $$('.nav-item').forEach(x => x.classList.toggle('active', x === b));
-    $$('.settings-page').forEach(p => p.classList.toggle('active', p.dataset.page === tab));
+    $$('#settings-modal .nav-item').forEach(x => x.classList.toggle('active', x === b));
+    $$('#settings-modal .settings-page').forEach(p => p.classList.toggle('active', p.dataset.page === tab));
+  });
+});
+
+/* Tools modal open/close + tab switching */
+$("#tools-btn")?.addEventListener("click", openTools);
+$("#tools-close")?.addEventListener("click", closeTools);
+$("#tools-backdrop")?.addEventListener("click", closeTools);
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && $("#tools-modal")?.classList.contains("open")) closeTools();
+});
+function openTools() {
+  $("#tools-modal").classList.add("open");
+  $("#tools-modal").setAttribute("aria-hidden", "false");
+  $("#tools-backdrop").classList.add("show");
+}
+function closeTools() {
+  $("#tools-modal").classList.remove("open");
+  $("#tools-modal").setAttribute("aria-hidden", "true");
+  $("#tools-backdrop").classList.remove("show");
+}
+$$('.tools-nav-item').forEach(b => {
+  b.addEventListener('click', () => {
+    const tool = b.dataset.tool;
+    $$('.tools-nav-item').forEach(x => x.classList.toggle('active', x === b));
+    $$('.tools-page').forEach(p => p.classList.toggle('active', p.dataset.toolPage === tool));
   });
 });
 
@@ -698,6 +725,288 @@ function cssEscape(s) {
   // Minimal CSS attribute-value escape: escape backslashes and double-quotes
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
+
+/* ============================================================
+   Tools modal — single-file tools share the same shape:
+   file picker, options, output picker, Start button, progress bar.
+   runToolJob() handles the EventSource consumption so each tool
+   only has to map status names to UI updates.
+   ============================================================ */
+
+function setToolStatus(id, msg, kind = "") {
+  const el = $("#" + id);
+  if (!el) return;
+  el.textContent = msg || "";
+  el.classList.remove("ok", "err");
+  if (kind) el.classList.add(kind);
+}
+
+function setToolProgress(barId, p) {
+  const wrap = $("#" + barId);
+  if (!wrap) return;
+  wrap.hidden = false;
+  const inner = wrap.querySelector("div");
+  if (inner) inner.style.width = `${(p * 100).toFixed(1)}%`;
+}
+
+function resetToolProgress(barId) {
+  const wrap = $("#" + barId);
+  if (!wrap) return;
+  wrap.hidden = true;
+  const inner = wrap.querySelector("div");
+  if (inner) inner.style.width = "0%";
+}
+
+async function runToolJob({ endpoint, body, startBtnId, statusId, progressBarId, progressStatus, doneStatus, errorStatus, doneLabel }) {
+  const btn = $("#" + startBtnId);
+  if (btn) btn.disabled = true;
+  resetToolProgress(progressBarId);
+  setToolStatus(statusId, "Starting…");
+  try {
+    const r = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const detail = await r.json().catch(() => ({})).then(j => j.detail).catch(() => null);
+      throw new Error(detail || `HTTP ${r.status}`);
+    }
+    const { job_id } = await r.json();
+    const es = new EventSource(`/api/progress/${job_id}`);
+    es.onmessage = e => {
+      const ev = JSON.parse(e.data);
+      if (ev.status === progressStatus) {
+        setToolProgress(progressBarId, ev.progress || 0);
+      } else if (ev.status === doneStatus) {
+        setToolProgress(progressBarId, 1);
+        const sizeMB = ev.size ? (ev.size / (1024 * 1024)).toFixed(1) : null;
+        let msg = doneLabel || "Done";
+        if (sizeMB) msg += ` · ${sizeMB} MB`;
+        if (ev.output) msg += ` → ${ev.output}`;
+        if (ev.reencoded === true) msg += " (re-encoded)";
+        setToolStatus(statusId, msg, "ok");
+      } else if (ev.status === errorStatus) {
+        setToolStatus(statusId, "Failed: " + (ev.error || "unknown"), "err");
+      } else if (ev.status === "all_done") {
+        es.close();
+        if (btn) btn.disabled = false;
+      } else if (ev.status === "error") {
+        es.close();
+        setToolStatus(statusId, "Failed: " + (ev.error || "unknown"), "err");
+        if (btn) btn.disabled = false;
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      if (btn) btn.disabled = false;
+    };
+  } catch (e) {
+    setToolStatus(statusId, "Failed: " + e.message, "err");
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function pickSingleFile(targetInputId) {
+  if (!native() || typeof native().pick_video_files !== "function") return;
+  const paths = await native().pick_video_files();
+  if (paths && paths.length) {
+    $("#" + targetInputId).value = paths[0];
+  }
+}
+
+async function pickFolderInto(targetInputId) {
+  if (!native() || typeof native().pick_folder !== "function") return;
+  const cur = $("#" + targetInputId).value || "";
+  const path = await native().pick_folder(cur);
+  if (path) $("#" + targetInputId).value = path;
+}
+
+function readTimeInputSeconds(rootId) {
+  const root = $("#" + rootId);
+  if (!root) return null;
+  const h = parseInt(root.querySelector('[data-part="h"]').value || "0", 10) || 0;
+  const m = parseInt(root.querySelector('[data-part="m"]').value || "0", 10) || 0;
+  const s = parseInt(root.querySelector('[data-part="s"]').value || "0", 10) || 0;
+  const total = h * 3600 + m * 60 + s;
+  return total > 0 ? total : null;
+}
+
+/* ---- Trim tool ---- */
+$("#trim-pick")?.addEventListener("click", () => pickSingleFile("trim-input"));
+$("#trim-out-pick")?.addEventListener("click", () => pickFolderInto("trim-out-dir"));
+$("#trim-start-btn")?.addEventListener("click", () => {
+  const input = $("#trim-input").value.trim();
+  if (!input) { setToolStatus("trim-status", "Pick a file first.", "err"); return; }
+  runToolJob({
+    endpoint: "/api/trim",
+    body: {
+      input,
+      start: readTimeInputSeconds("trim-start"),
+      end: readTimeInputSeconds("trim-end"),
+      mode: $("#trim-mode").value,
+      output_dir: $("#trim-out-dir").value.trim(),
+    },
+    startBtnId: "trim-start-btn",
+    statusId: "trim-status",
+    progressBarId: "trim-progress-bar",
+    progressStatus: "trim_progress",
+    doneStatus: "trim_done",
+    errorStatus: "trim_error",
+    doneLabel: "Trim complete",
+  });
+});
+
+/* ---- Extract audio tool ---- */
+function updateAudioBitrateVisibility() {
+  const fmt = $("#audio-format")?.value;
+  const row = $("#audio-bitrate-row");
+  if (row) row.style.display = (fmt === "mp3" || fmt === "aac") ? "" : "none";
+}
+$("#audio-format")?.addEventListener("change", updateAudioBitrateVisibility);
+updateAudioBitrateVisibility();
+$("#audio-pick")?.addEventListener("click", () => pickSingleFile("audio-input"));
+$("#audio-out-pick")?.addEventListener("click", () => pickFolderInto("audio-out-dir"));
+$("#audio-start")?.addEventListener("click", () => {
+  const input = $("#audio-input").value.trim();
+  if (!input) { setToolStatus("audio-status", "Pick a file first.", "err"); return; }
+  runToolJob({
+    endpoint: "/api/extract-audio",
+    body: {
+      input,
+      format: $("#audio-format").value,
+      bitrate: parseInt($("#audio-bitrate").value || "192", 10),
+      output_dir: $("#audio-out-dir").value.trim(),
+    },
+    startBtnId: "audio-start",
+    statusId: "audio-status",
+    progressBarId: "audio-progress-bar",
+    progressStatus: "audio_progress",
+    doneStatus: "audio_done",
+    errorStatus: "audio_error",
+    doneLabel: "Audio extracted",
+  });
+});
+
+/* ---- Speed change tool ---- */
+$("#speed-pick")?.addEventListener("click", () => pickSingleFile("speed-input"));
+$("#speed-out-pick")?.addEventListener("click", () => pickFolderInto("speed-out-dir"));
+$$('.speed-preset').forEach(b => {
+  b.addEventListener("click", () => {
+    $("#speed-factor").value = b.dataset.factor;
+  });
+});
+$("#speed-start")?.addEventListener("click", () => {
+  const input = $("#speed-input").value.trim();
+  if (!input) { setToolStatus("speed-status", "Pick a file first.", "err"); return; }
+  const factor = parseFloat($("#speed-factor").value || "1");
+  if (!factor || factor <= 0) {
+    setToolStatus("speed-status", "Speed factor must be greater than 0.", "err");
+    return;
+  }
+  runToolJob({
+    endpoint: "/api/speed",
+    body: {
+      input,
+      factor,
+      output_dir: $("#speed-out-dir").value.trim(),
+    },
+    startBtnId: "speed-start",
+    statusId: "speed-status",
+    progressBarId: "speed-progress-bar",
+    progressStatus: "speed_progress",
+    doneStatus: "speed_done",
+    errorStatus: "speed_error",
+    doneLabel: `${factor}x complete`,
+  });
+});
+
+/* ---- Merge tool ---- */
+const mergeFiles = [];
+function renderMergeFiles() {
+  const list = $("#merge-files");
+  if (!list) return;
+  if (!mergeFiles.length) {
+    list.innerHTML = '<p class="history-empty">No files added yet.</p>';
+    return;
+  }
+  list.innerHTML = "";
+  mergeFiles.forEach((path, i) => {
+    const row = document.createElement("div");
+    row.className = "compress-file-row";
+    row.innerHTML = `
+      <span class="name" title="${escapeHtml(path)}">${i + 1}. ${escapeHtml(basename(path))}</span>
+      <span class="meta"></span>
+      <div class="progress"><div></div></div>
+      <button class="link" type="button">Remove</button>
+    `;
+    row.querySelector("button").addEventListener("click", () => {
+      mergeFiles.splice(i, 1);
+      renderMergeFiles();
+    });
+    list.appendChild(row);
+  });
+}
+$("#merge-add-btn")?.addEventListener("click", async () => {
+  if (!native() || typeof native().pick_video_files !== "function") return;
+  const paths = await native().pick_video_files();
+  if (!paths || !paths.length) return;
+  for (const p of paths) {
+    if (!mergeFiles.includes(p)) mergeFiles.push(p);
+  }
+  renderMergeFiles();
+});
+$("#merge-clear-btn")?.addEventListener("click", () => {
+  mergeFiles.length = 0;
+  renderMergeFiles();
+});
+$("#merge-out-pick")?.addEventListener("click", () => pickFolderInto("merge-out-dir"));
+$("#merge-start")?.addEventListener("click", () => {
+  if (mergeFiles.length < 2) {
+    setToolStatus("merge-status", "Add at least 2 files to merge.", "err");
+    return;
+  }
+  runToolJob({
+    endpoint: "/api/merge",
+    body: {
+      inputs: [...mergeFiles],
+      output_name: $("#merge-output-name").value.trim() || "merged.mp4",
+      output_dir: $("#merge-out-dir").value.trim(),
+      force_reencode: $("#merge-force-reencode").checked,
+    },
+    startBtnId: "merge-start",
+    statusId: "merge-status",
+    progressBarId: "merge-progress-bar",
+    progressStatus: "merge_progress",
+    doneStatus: "merge_done",
+    errorStatus: "merge_error",
+    doneLabel: "Merge complete",
+  });
+});
+
+/* ---- Convert format tool ---- */
+$("#convert-pick")?.addEventListener("click", () => pickSingleFile("convert-input"));
+$("#convert-out-pick")?.addEventListener("click", () => pickFolderInto("convert-out-dir"));
+$("#convert-start")?.addEventListener("click", () => {
+  const input = $("#convert-input").value.trim();
+  if (!input) { setToolStatus("convert-status", "Pick a file first.", "err"); return; }
+  runToolJob({
+    endpoint: "/api/convert",
+    body: {
+      input,
+      target_format: $("#convert-target").value,
+      force_reencode: $("#convert-force-reencode").checked,
+      output_dir: $("#convert-out-dir").value.trim(),
+    },
+    startBtnId: "convert-start",
+    statusId: "convert-status",
+    progressBarId: "convert-progress-bar",
+    progressStatus: "convert_progress",
+    doneStatus: "convert_done",
+    errorStatus: "convert_error",
+    doneLabel: "Convert complete",
+  });
+});
 
 /* ---- Drag and drop URLs ---- */
 window.addEventListener("dragover", e => { e.preventDefault(); });
